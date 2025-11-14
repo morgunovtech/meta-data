@@ -6,6 +6,11 @@ interface ReverseGeocodeResponse {
     address: string;
     country: string;
     countryCode?: string;
+    state?: string;
+    city?: string;
+    district?: string;
+    road?: string;
+    houseNumber?: string;
     precisionMeters?: number;
     lat: number;
     lon: number;
@@ -41,10 +46,18 @@ export async function onRequest({ request }: PagesEventContext): Promise<Respons
     const result = await response.json<any>();
     const boundingBox = (result.boundingbox ?? []).map((value: string) => Number(value));
     const precision = estimatePrecision(boundingBox);
+    const address = result.address ?? {};
+    const city = address.city ?? address.town ?? address.village ?? address.hamlet;
+    const district = address.city_district ?? address.suburb ?? address.neighbourhood;
     const data = {
       address: result.display_name ?? 'Unknown address',
-      country: result.address?.country ?? 'Unknown',
-      countryCode: result.address?.country_code?.toUpperCase(),
+      country: address.country ?? 'Unknown',
+      countryCode: address.country_code?.toUpperCase(),
+      state: address.state ?? address.region ?? address.county,
+      city: city ?? undefined,
+      district: district ?? undefined,
+      road: address.road ?? address.pedestrian ?? address.cycleway ?? address.footway ?? undefined,
+      houseNumber: address.house_number ?? undefined,
       precisionMeters: precision,
       lat,
       lon

@@ -9,6 +9,7 @@ export interface BoundingBox {
 
 export interface DetectionSummary {
   people: number;
+  faces: number;
   vehicles: number;
   animals: number;
   description: string;

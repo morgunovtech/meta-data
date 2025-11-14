@@ -8,6 +8,11 @@ export interface ReverseGeocodeResult {
   address: string;
   country: string;
   countryCode?: string;
+  state?: string;
+  city?: string;
+  district?: string;
+  road?: string;
+  houseNumber?: string;
   precisionMeters?: number;
   lat: number;
   lon: number;

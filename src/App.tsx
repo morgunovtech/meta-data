@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { InfoBlock } from './components/InfoBlock';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { UploadZone } from './components/UploadZone';
@@ -7,7 +7,6 @@ import { useExifMetadata } from './hooks/useExifMetadata';
 import { PreviewViewer } from './components/PreviewViewer';
 import { MetadataPanel } from './components/MetadataPanel';
 import { ShockBlock } from './components/ShockBlock';
-import { ContentAnalysisBlock } from './components/ContentAnalysisBlock';
 import { CleanupDownloadBlock } from './components/CleanupDownloadBlock';
 import { useImageAnalysis } from './hooks/useImageAnalysis';
 import type { ManualCoordinates } from './types/metadata';
@@ -52,13 +51,20 @@ const App: React.FC = () => {
   const [removeMetadata, setRemoveMetadata] = useState(true);
   const [blurFaces, setBlurFaces] = useState(false);
   const [jpegQuality, setJpegQuality] = useState(qualityDefault);
+  const [blurStrength, setBlurStrength] = useState(28);
   const [processing, setProcessing] = useState(false);
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [estimatedSize, setEstimatedSize] = useState<number | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
 
   const personDetections = useMemo(
     () => detections.filter((det) => det.label === 'person'),
+    [detections]
+  );
+  const faceDetections = useMemo(
+    () => detections.filter((det) => det.label === 'face'),
     [detections]
   );
 
@@ -69,8 +75,10 @@ const App: React.FC = () => {
       setBlurFaces(false);
       setNotice(null);
       setJpegQuality(qualityDefault);
+      setBlurStrength(28);
       setPreviewDataUrl(null);
       setPreviewLoading(true);
+      setEstimatedSize(null);
       await processFile(file);
     },
     [processFile]
@@ -88,28 +96,31 @@ const App: React.FC = () => {
     }
     ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
 
-    if (blurFaces && personDetections.length > 0) {
-      personDetections.forEach((det) => {
-        const padX = Math.max(det.width * 0.25, 16);
-        const padY = Math.max(det.height * 0.25, 16);
+    if (blurFaces) {
+      const targets = faceDetections.length > 0 ? faceDetections : personDetections;
+      targets.forEach((det) => {
+        const padFactor = det.label === 'face' ? 0.3 : 0.2;
+        const padX = Math.max(det.width * padFactor, 12);
+        const padY = Math.max(det.height * padFactor, 12);
         const x = Math.max(0, det.x - padX);
         const y = Math.max(0, det.y - padY);
         const width = Math.max(0, Math.min(canvas.width - x, det.width + padX * 2));
         const height = Math.max(0, Math.min(canvas.height - y, det.height + padY * 2));
+        if (width <= 0 || height <= 0) {
+          return;
+        }
         ctx.save();
         ctx.beginPath();
-        if (width > 0 && height > 0) {
-          ctx.rect(x, y, width, height);
-          ctx.clip();
-          ctx.filter = 'blur(28px)';
-          ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-        }
+        ctx.rect(x, y, width, height);
+        ctx.clip();
+        ctx.filter = `blur(${blurStrength}px)`;
+        ctx.drawImage(image, x, y, width, height, x, y, width, height);
         ctx.restore();
       });
     }
 
     return canvas;
-  }, [fileInfo, blurFaces, personDetections]);
+  }, [fileInfo, blurFaces, faceDetections, personDetections, blurStrength]);
 
   const handleDownload = useCallback(async () => {
     if (!fileInfo || (!removeMetadata && !blurFaces)) {
@@ -176,14 +187,21 @@ const App: React.FC = () => {
     setProcessing(false);
     setNotice(null);
     setJpegQuality(qualityDefault);
+    setBlurStrength(28);
     setPreviewDataUrl(null);
     setPreviewLoading(false);
+    setEstimatedSize(null);
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
   }, [reset]);
 
   useEffect(() => {
     if (!fileInfo) {
       setPreviewDataUrl(null);
       setPreviewLoading(false);
+      setEstimatedSize(null);
       return;
     }
     let cancelled = false;
@@ -193,17 +211,41 @@ const App: React.FC = () => {
         if (!canvas || cancelled) {
           return;
         }
-        const mime = fileInfo.mimeType.includes('png') ? 'image/png' : 'image/jpeg';
-        const quality = mime === 'image/jpeg' ? jpegQuality : undefined;
-        const dataUrl = canvas.toDataURL(mime, quality);
-        if (!cancelled) {
-          setPreviewDataUrl(dataUrl);
-        }
+        const mime = fileInfo.mimeType.includes('png')
+          ? 'image/png'
+          : fileInfo.mimeType.includes('webp')
+          ? 'image/webp'
+          : 'image/jpeg';
+        return new Promise<void>((resolve, reject) => {
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                reject(new Error('preview-blob'));
+                return;
+              }
+              if (cancelled) {
+                resolve();
+                return;
+              }
+              if (previewUrlRef.current) {
+                URL.revokeObjectURL(previewUrlRef.current);
+              }
+              const url = URL.createObjectURL(blob);
+              previewUrlRef.current = url;
+              setPreviewDataUrl(url);
+              setEstimatedSize(blob.size);
+              resolve();
+            },
+            mime,
+            mime === 'image/jpeg' || mime === 'image/webp' ? jpegQuality : undefined
+          );
+        });
       })
       .catch((err) => {
         console.error('cleanup-preview', err);
         if (!cancelled) {
           setPreviewDataUrl(null);
+          setEstimatedSize(null);
         }
       })
       .finally(() => {
@@ -216,6 +258,14 @@ const App: React.FC = () => {
       cancelled = true;
     };
   }, [fileInfo, blurFaces, jpegQuality, createProcessedCanvas]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div className="app-shell">
@@ -238,7 +288,11 @@ const App: React.FC = () => {
           <div className="panel">
             <PreviewViewer fileInfo={fileInfo} detections={detections} />
           </div>
-          <MetadataPanel fileInfo={fileInfo} metadata={metadata} />
+          <MetadataPanel
+            fileInfo={fileInfo}
+            metadata={metadata}
+            analysis={{ summary: analysisSummary, error: analysisError, loading: analysisLoading }}
+          />
         </div>
       ) : null}
 
@@ -246,23 +300,22 @@ const App: React.FC = () => {
         <ShockBlock metadata={metadata} manualCoords={manualCoords} onManualCoordsChange={setManualCoords} />
       ) : null}
 
-      {fileInfo ? (
-        <ContentAnalysisBlock loading={analysisLoading} error={analysisError} summary={analysisSummary} />
-      ) : null}
-
       <CleanupDownloadBlock
         fileInfo={fileInfo}
         detections={detections}
         removeMetadata={removeMetadata}
         blurFaces={blurFaces}
+        blurStrength={blurStrength}
         jpegQuality={jpegQuality}
         setRemoveMetadata={setRemoveMetadata}
         setBlurFaces={setBlurFaces}
+        setBlurStrength={setBlurStrength}
         setJpegQuality={setJpegQuality}
         onClean={handleDownload}
         processing={processing}
         previewDataUrl={previewDataUrl}
         previewLoading={previewLoading}
+        estimatedSize={estimatedSize}
       />
       {notice ? (
         <p className={`notice ${notice.type === 'success' ? 'notice--positive' : 'notice--negative'}`}>

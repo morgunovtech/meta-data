@@ -36,6 +36,15 @@ export const MapBlock: React.FC<MapBlockProps> = ({ lat, lon, accuracy }) => {
   }, []);
 
   useEffect(() => {
+    if (!containerRef.current || !mapRef.current) return;
+    const observer = new ResizeObserver(() => {
+      mapRef.current?.resize();
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     if (mapRef.current) {
       mapRef.current.setCenter([lon, lat]);
     }

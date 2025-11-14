@@ -38,15 +38,18 @@ export async function onRequest({ request }: PagesEventContext): Promise<Respons
       return json({ ok: false, error: 'timezone-missing' });
     }
 
-    const localTimeIso = new Intl.DateTimeFormat('sv-SE', {
+    const localParts = new Intl.DateTimeFormat('en-CA', {
       timeZone: timezone,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit'
-    }).format(date);
+      second: '2-digit',
+      hour12: false
+    }).formatToParts(date);
+    const pick = (type: string) => localParts.find((part) => part.type === type)?.value ?? '00';
+    const localTimeIso = `${pick('year')}-${pick('month')}-${pick('day')}T${pick('hour')}:${pick('minute')}:${pick('second')}`;
 
     let holiday: { name: string; countryCode: string } | undefined;
     if (countryCode) {

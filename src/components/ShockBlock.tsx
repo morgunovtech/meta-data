@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useI18n, useT } from '../i18n';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useI18n, useT, type MessageKey } from '../i18n';
 import type { StructuredMetadata, ManualCoordinates } from '../types/metadata';
 import type {
   ReverseGeocodeResult,
@@ -11,10 +11,9 @@ import { useAPIFetch } from '../hooks/useAPIFetch';
 import { ErrorBanner } from './ErrorBanner';
 import { MapBlock } from './MapBlock';
 import { googleMapsLink, streetViewLink } from '../utils/mapLinks';
-import { formatNumber } from '../utils/format';
+import { formatNumber, formatLocalizedDateTime } from '../utils/format';
 import {
   describeDayPeriod,
-  describeTopPoi,
   extractSoftware,
   hasReverseData,
   inferCameraPosition,
@@ -46,6 +45,7 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
   const [lonInput, setLonInput] = useState('');
   const gpsAccuracy = metadata?.gps?.accuracy;
   const gpsHeading = metadata?.gps?.heading;
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
 
   useEffect(() => {
     if (manualCoords) {
@@ -58,6 +58,7 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
       setLatInput('');
       setLonInput('');
     }
+    setCopyState('idle');
   }, [manualCoords, metadata?.gps?.lat, metadata?.gps?.lon]);
 
   const coords = useMemo(() => {
@@ -68,6 +69,35 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
     return null;
   }, [manualCoords, metadata?.gps?.lat, metadata?.gps?.lon]);
   const timestamp = metadata?.shotDate ?? null;
+
+  const coordsLabel = coords ? `${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}` : '';
+
+  const handleCopyCoordinates = useCallback(() => {
+    if (!coords) return;
+    const value = coordsLabel;
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      navigator.clipboard
+        .writeText(value)
+        .then(() => setCopyState('copied'))
+        .catch(() => setCopyState('error'));
+      return;
+    }
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = value;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'absolute';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      setCopyState('copied');
+    } catch (error) {
+      console.error('copy-coords', error);
+      setCopyState('error');
+    }
+  }, [coords, coordsLabel]);
 
   const reverseFetch = useAPIFetch<ReverseGeocodeResult>();
   const timezoneFetch = useAPIFetch<TimezoneHolidayResult>();
@@ -101,17 +131,18 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
   const movement = useMemo(() => inferMovement(metadata), [metadata]);
   const localContext = useMemo(() => resolveLocalTime(metadata, timezoneFetch.data ?? null), [metadata, timezoneFetch.data]);
   const weatherSummary = useMemo(() => summarizeWeather(weatherFetch.data ?? null), [weatherFetch.data]);
-  const topPoi = useMemo(() => describeTopPoi(poiFetch.data ?? null), [poiFetch.data]);
+  const poiItems = useMemo(() => (poiFetch.data ?? []).slice(0, 5), [poiFetch.data]);
+  const surveillanceItems = useMemo(
+    () => (surveillanceFetch.data ?? []).slice(0, 5),
+    [surveillanceFetch.data]
+  );
   const surveillanceSummary = useMemo(() => summarizeSurveillance(surveillanceFetch.data ?? null), [surveillanceFetch.data]);
 
   const localTimeDetails = useMemo(() => {
     if (!localContext.iso) return null;
     const date = new Date(localContext.iso);
     if (Number.isNaN(date.getTime())) return null;
-    const formatted = new Intl.DateTimeFormat(lang, {
-      dateStyle: 'long',
-      timeStyle: 'short'
-    }).format(date);
+    const formatted = formatLocalizedDateTime(date, lang);
     const weekday = new Intl.DateTimeFormat(lang, { weekday: 'long' }).format(date);
     const periodKey = `dayPeriod${capitalize(describeDayPeriod(date))}` as const;
     return {
@@ -125,41 +156,24 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
     const list: InsightItem[] = [];
 
     if (coords) {
-      const accuracyText = gpsAccuracy ? t('insightLocationAccuracy', { accuracy: Math.round(gpsAccuracy) }) : null;
-      let locationContent: React.ReactNode;
-      if (reverseFetch.loading) {
-        locationContent = <p>{t('insightLoading')}</p>;
-      } else if (reverseFetch.error) {
-        locationContent = (
-          <p>
-            {t('insightLocationError', {
-              lat: coords.lat.toFixed(5),
-              lon: coords.lon.toFixed(5)
-            })}
-          </p>
-        );
-      } else if (hasReverseData(reverseFetch.data)) {
-        locationContent = (
-          <>
-            <p>{t('insightLocationAddress', { address: reverseFetch.data.address })}</p>
-            <p>
-              {t('insightLocationCountry', {
-                country: reverseFetch.data.country,
-                code: reverseFetch.data.countryCode ?? t('emptyValue')
-              })}
-            </p>
-          </>
-        );
-      } else {
-        locationContent = (
-          <p>
-            {t('insightLocationCoordinates', {
-              lat: coords.lat.toFixed(5),
-              lon: coords.lon.toFixed(5)
-            })}
-          </p>
-        );
-      }
+      const reverseData = hasReverseData(reverseFetch.data) ? reverseFetch.data : null;
+      const accuracyMeters = gpsAccuracy ?? reverseData?.precisionMeters ?? null;
+      const accuracyText = accuracyMeters != null
+        ? t('insightLocationPrecisionLine', {
+            accuracy: t('accuracyMeters', { value: Math.max(1, Math.round(accuracyMeters)) })
+          })
+        : null;
+      const primaryLine = reverseFetch.loading
+        ? t('insightLoading')
+        : reverseData
+        ? t('insightLocationLine', {
+            country: reverseData.country ?? t('emptyValue'),
+            city: reverseData.city ?? t('emptyValue'),
+            district: reverseData.district ?? t('emptyValue'),
+            street: reverseData.road ?? t('emptyValue'),
+            house: reverseData.houseNumber ?? t('emptyValue')
+          })
+        : t('insightLocationFallback', { coords: coordsLabel });
 
       list.push({
         id: 'location',
@@ -167,8 +181,22 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
         title: t('insightLocationTitle'),
         content: (
           <div className="insight-content">
-            {locationContent}
-            {accuracyText ? <p>{accuracyText}</p> : null}
+            <ul className="insight-detail-list">
+              <li>{primaryLine}</li>
+              {accuracyText ? <li>{accuracyText}</li> : null}
+              <li className="insight-copy">
+                <button type="button" className="link-button" onClick={handleCopyCoordinates}>
+                  {t('insightLocationCoords', { coords: coordsLabel })}
+                </button>
+                <span className="copy-feedback">
+                  {copyState === 'copied'
+                    ? t('copied')
+                    : copyState === 'error'
+                    ? t('copyFailed')
+                    : t('copyHint')}
+                </span>
+              </li>
+            </ul>
             <div className="insight-actions">
               <a className="button button--ghost" href={googleMapsLink(coords.lat, coords.lon)} target="_blank" rel="noreferrer">
                 {t('openMaps')}
@@ -197,22 +225,18 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
           })
         : t('insightTimeNoHoliday');
       const timezoneText = localContext.timezone ?? t('insightTimeTimezoneUnknown');
+      const periodLabel = t(localTimeDetails.periodKey as MessageKey);
       list.push({
         id: 'time',
         severity: 'high',
         title: t('insightTimeTitle'),
         content: (
-          <div className="insight-content">
-            <p>
-              {t('insightTimeValue', {
-                date: localTimeDetails.formatted,
-                weekday: capitalize(localTimeDetails.weekday),
-                period: t(localTimeDetails.periodKey)
-              })}
-            </p>
-            <p>{t('insightTimeZone', { timezone: timezoneText })}</p>
-            <p>{holidayText}</p>
-          </div>
+          <ul className="insight-detail-list">
+            <li>{t('insightTimeValue', { datetime: localTimeDetails.formatted })}</li>
+            <li>{t('insightTimePeriod', { period: periodLabel })}</li>
+            <li>{t('insightTimeZone', { timezone: timezoneText })}</li>
+            <li>{holidayText}</li>
+          </ul>
         )
       });
     } else {
@@ -224,53 +248,31 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
       });
     }
 
-    if (metadata?.cameraMake || metadata?.cameraModel) {
-      const deviceName = [metadata?.cameraMake, metadata?.cameraModel].filter(Boolean).join(' ');
-      const lens = metadata?.lensModel;
-      const deviceText = lens
-        ? t('insightDeviceLens', { device: deviceName, lens })
-        : t('insightDeviceSimple', { device: deviceName });
-      list.push({
-        id: 'device',
-        severity: 'high',
-        title: t('insightDeviceTitle'),
-        content: <p>{deviceText}</p>
-      });
-    } else {
-      list.push({
-        id: 'device-missing',
-        severity: 'info',
-        title: t('insightDeviceTitle'),
-        content: <p>{t('insightDeviceUnknown')}</p>
-      });
-    }
+    const deviceName = [metadata?.cameraMake, metadata?.cameraModel].filter(Boolean).join(' ');
+    const cameraKey = cameraPosition !== 'unknown' ? (`cameraPlacement${capitalize(cameraPosition)}` as MessageKey) : null;
+    const positionLabel = cameraKey ? t(cameraKey) : '';
+    const deviceLine = [deviceName, positionLabel].filter(Boolean).join(', ');
 
-    if (software) {
-      list.push({
-        id: 'software',
-        severity: 'medium',
-        title: t('insightOsTitle'),
-        content: <p>{t('insightOsValue', { software })}</p>
-      });
-    } else {
-      list.push({
-        id: 'software-missing',
-        severity: 'info',
-        title: t('insightOsTitle'),
-        content: <p>{t('insightOsUnknown')}</p>
-      });
-    }
+    list.push({
+      id: 'device',
+      severity: deviceLine ? 'high' : 'info',
+      title: t('insightDeviceTitle'),
+      content: <p>{deviceLine || t('insightDeviceUnknown')}</p>
+    });
 
-    if (cameraPosition !== 'unknown') {
-      const key =
-        cameraPosition === 'front' ? 'insightCameraFront' : cameraPosition === 'rear' ? 'insightCameraRear' : 'insightCameraUnknown';
-      list.push({
-        id: 'camera-position',
-        severity: 'medium',
-        title: t('insightCameraTitle'),
-        content: <p>{t(key)}</p>
-      });
-    }
+    list.push({
+      id: 'software',
+      severity: software ? 'medium' : 'info',
+      title: t('insightOsTitle'),
+      content: <p>{software ? t('insightOsValue', { software }) : t('insightOsUnknown')}</p>
+    });
+
+    list.push({
+      id: 'camera-position',
+      severity: cameraPosition === 'front' ? 'high' : 'medium',
+      title: t('insightCameraTitle'),
+      content: <p>{t(cameraPosition === 'front' ? 'insightCameraFront' : cameraPosition === 'rear' ? 'insightCameraRear' : 'insightCameraUnknown')}</p>
+    });
 
     if (movement) {
       const speed = movement.speedKmh ? formatNumber(movement.speedKmh, 1) : undefined;
@@ -339,20 +341,27 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
         title: t('insightPoiTitle'),
         content: <p>{t('insightPoiError')}</p>
       });
-    } else if (topPoi) {
-      const poiName = topPoi.name || t('insightPoiUnnamed', { category: topPoi.category });
+    } else if (poiItems.length > 0) {
       list.push({
         id: 'poi',
         severity: 'medium',
         title: t('insightPoiTitle'),
         content: (
-          <p>
-            {t('insightPoiValue', {
-              name: poiName,
-              distance: Math.round(topPoi.distance),
-              category: topPoi.category
+          <ul className="insight-detail-list">
+            {poiItems.map((item, index) => {
+              const formattedCategory = humanizeCategory(item.category);
+              const name = item.name || t('insightPoiUnnamed', { category: formattedCategory });
+              return (
+                <li key={`${name}-${index}`}>
+                  {t('insightPoiListItem', {
+                    name,
+                    category: formattedCategory,
+                    distance: Math.round(item.distance)
+                  })}
+                </li>
+              );
             })}
-          </p>
+          </ul>
         )
       });
     } else {
@@ -378,18 +387,30 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
         title: t('insightSurveillanceTitle'),
         content: <p>{t('insightSurveillanceError')}</p>
       });
-    } else if (surveillanceSummary) {
+    } else if (surveillanceItems.length > 0 && surveillanceSummary) {
       list.push({
         id: 'surveillance',
         severity: 'high',
         title: t('insightSurveillanceTitle'),
         content: (
-          <p>
-            {t('insightSurveillanceValue', {
-              count: surveillanceSummary.count,
-              distance: surveillanceSummary.nearest ? Math.round(surveillanceSummary.nearest) : 0
-            })}
-          </p>
+          <div className="insight-content">
+            <p>
+              {t('insightSurveillanceValue', {
+                count: surveillanceSummary.count,
+                distance: surveillanceSummary.nearest ? Math.round(surveillanceSummary.nearest) : 0
+              })}
+            </p>
+            <ul className="insight-detail-list">
+              {surveillanceItems.map((item, index) => (
+                <li key={`${item.category}-${index}`}>
+                  {t('insightSurveillanceItem', {
+                    category: humanizeCategory(item.category),
+                    distance: Math.round(item.distance)
+                  })}
+                </li>
+              ))}
+            </ul>
+          </div>
         )
       });
     } else {
@@ -404,10 +425,12 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
     return list;
   }, [
     coords,
+    coordsLabel,
     gpsAccuracy,
     reverseFetch.loading,
-    reverseFetch.error,
     reverseFetch.data,
+    handleCopyCoordinates,
+    copyState,
     gpsHeading,
     t,
     localTimeDetails,
@@ -416,9 +439,8 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
     localContext.timezone,
     metadata?.cameraMake,
     metadata?.cameraModel,
-    metadata?.lensModel,
-    software,
     cameraPosition,
+    software,
     movement,
     weatherFetch.loading,
     weatherFetch.error,
@@ -426,9 +448,10 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
     timestamp,
     poiFetch.loading,
     poiFetch.error,
-    topPoi,
+    poiItems,
     surveillanceFetch.loading,
     surveillanceFetch.error,
+    surveillanceItems,
     surveillanceSummary
   ]);
 
@@ -518,8 +541,10 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
             ) : null}
             {surveillanceFetch.error ? (
               <ErrorBanner
-                message={t('poiError')}
-                onRetry={() => coords && surveillanceFetch.request(`/api/surveillance-candidates?lat=${coords.lat}&lon=${coords.lon}`)}
+                message={t('insightSurveillanceError')}
+                onRetry={() =>
+                  coords && surveillanceFetch.request(`/api/surveillance-candidates?lat=${coords.lat}&lon=${coords.lon}`)
+                }
               />
             ) : null}
           </div>
@@ -545,4 +570,14 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
 function capitalize(value: string) {
   if (!value) return value;
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function humanizeCategory(value: string): string {
+  if (!value) return value;
+  return value
+    .replace(/_/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
 }
