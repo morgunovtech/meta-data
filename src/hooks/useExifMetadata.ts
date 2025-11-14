@@ -42,7 +42,8 @@ export function useExifMetadata(fileInfo: BasicFileInfo | null): UseExifMetadata
 
         const exifRecord = (exifData ?? {}) as Record<string, unknown>;
         const shotDateIso = normalizeDateValue(
-          pickFirst(exifRecord, ['DateTimeOriginal', 'dateTimeOriginal', 'CreateDate', 'createDate'])
+          pickFirst(exifRecord, ['DateTimeOriginal', 'dateTimeOriginal', 'CreateDate', 'createDate']),
+          pickFirst(exifRecord, ['OffsetTimeOriginal', 'offsetTimeOriginal', 'OffsetTime'])
         );
         const cameraMake = pickFirst<string>(exifRecord, ['Make', 'make']);
         const cameraModel = pickFirst<string>(exifRecord, ['Model', 'model']);
@@ -124,7 +125,7 @@ function pickFirst<T>(source: Record<string, unknown> | undefined, keys: string[
   return undefined;
 }
 
-function normalizeDateValue(value: unknown): string | undefined {
+function normalizeDateValue(value: unknown, offsetValue?: unknown): string | undefined {
   if (!value) return undefined;
   if (value instanceof Date) {
     if (Number.isNaN(value.getTime())) return undefined;
@@ -134,7 +135,9 @@ function normalizeDateValue(value: unknown): string | undefined {
     const trimmed = value.trim();
     if (!trimmed) return undefined;
     const normalized = trimmed.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3').replace(' ', 'T');
-    const parsed = new Date(normalized);
+    const offset = normalizeOffset(offsetValue);
+    const candidate = offset ? `${normalized}${offset}` : normalized;
+    const parsed = new Date(candidate);
     if (!Number.isNaN(parsed.getTime())) {
       return parsed.toISOString();
     }
@@ -157,22 +160,35 @@ function formatExposure(value: string | number | undefined): string | undefined 
 
 function normalizeGps(exifRecord: Record<string, unknown>): StructuredMetadata['gps'] | undefined {
   const gpsRecord = (exifRecord.gps as Record<string, unknown> | undefined) ?? {};
-  const lat =
-    pickFirst<number>(gpsRecord, ['lat', 'latitude']) ??
-    pickFirst<number>(exifRecord, ['latitude', 'Latitude', 'GPSLatitude']);
-  const lon =
-    pickFirst<number>(gpsRecord, ['lon', 'longitude']) ??
-    pickFirst<number>(exifRecord, ['longitude', 'Longitude', 'GPSLongitude']);
-  if (typeof lat !== 'number' || typeof lon !== 'number' || Number.isNaN(lat) || Number.isNaN(lon)) {
+  const latRef =
+    pickFirst<string>(gpsRecord, ['latRef', 'latitudeRef']) ??
+    pickFirst<string>(exifRecord, ['GPSLatitudeRef', 'gpsLatitudeRef', 'LatitudeRef']);
+  const lonRef =
+    pickFirst<string>(gpsRecord, ['lonRef', 'longitudeRef']) ??
+    pickFirst<string>(exifRecord, ['GPSLongitudeRef', 'gpsLongitudeRef', 'LongitudeRef']);
+  const rawLat =
+    pickFirst(gpsRecord, ['lat', 'latitude']) ??
+    pickFirst(exifRecord, ['latitude', 'Latitude', 'GPSLatitude']);
+  const rawLon =
+    pickFirst(gpsRecord, ['lon', 'longitude']) ??
+    pickFirst(exifRecord, ['longitude', 'Longitude', 'GPSLongitude']);
+  const lat = toCoordinate(rawLat, latRef);
+  const lon = toCoordinate(rawLon, lonRef);
+  if (lat == null || lon == null) {
     return undefined;
   }
-  const altitude = pickFirst<number>(gpsRecord, ['altitude', 'Altitude']) ?? pickFirst<number>(exifRecord, ['Altitude']);
+  const altitude =
+    toNumber(pickFirst(gpsRecord, ['altitude', 'Altitude']) ?? pickFirst(exifRecord, ['Altitude'])) ?? undefined;
   const accuracy =
-    pickFirst<number>(gpsRecord, ['accuracy', 'gpsAccuracy']) ??
-    pickFirst<number>(exifRecord, ['gpsAccuracy', 'gpsHPositioningError', 'GPSHPositioningError', 'GPSDOP']);
+    toNumber(
+      pickFirst(gpsRecord, ['accuracy', 'gpsAccuracy']) ??
+        pickFirst(exifRecord, ['gpsAccuracy', 'gpsHPositioningError', 'GPSHPositioningError', 'GPSDOP'])
+    ) ?? undefined;
   const heading =
-    pickFirst<number>(gpsRecord, ['heading', 'gpsImgDirection']) ??
-    pickFirst<number>(exifRecord, ['gpsImgDirection', 'GPSImgDirection']);
+    toNumber(
+      pickFirst(gpsRecord, ['heading', 'gpsImgDirection']) ??
+        pickFirst(exifRecord, ['gpsImgDirection', 'GPSImgDirection'])
+    ) ?? undefined;
   return {
     lat,
     lon,
@@ -180,4 +196,61 @@ function normalizeGps(exifRecord: Record<string, unknown>): StructuredMetadata['
     accuracy,
     heading
   };
+}
+
+function normalizeOffset(offset: unknown): string | undefined {
+  if (typeof offset !== 'string') return undefined;
+  const trimmed = offset.trim();
+  if (!/^[-+]\d{2}:?\d{2}$/.test(trimmed)) return undefined;
+  const normalized = trimmed.includes(':') ? trimmed : `${trimmed.slice(0, 3)}:${trimmed.slice(3)}`;
+  return normalized;
+}
+
+function toCoordinate(value: unknown, ref?: string | null): number | undefined {
+  const numeric = toNumber(value);
+  if (numeric == null) return undefined;
+  if (!ref) return numeric;
+  const upper = ref.toUpperCase();
+  if (upper === 'S' || upper === 'W') {
+    return -Math.abs(numeric);
+  }
+  return Math.abs(numeric);
+}
+
+function toNumber(value: unknown): number | undefined {
+  if (value == null) return undefined;
+  if (typeof value === 'number') {
+    if (Number.isNaN(value)) return undefined;
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value.replace(',', '.'));
+    return Number.isNaN(parsed) ? undefined : parsed;
+  }
+  if (Array.isArray(value)) {
+    const numbers = value.map((entry) => rationalToNumber(entry)).filter((entry): entry is number => entry != null);
+    if (numbers.length === 0) return undefined;
+    if (numbers.length === 1) return numbers[0];
+    if (numbers.length >= 3) {
+      return numbers[0] + numbers[1] / 60 + numbers[2] / 3600;
+    }
+    return numbers.reduce((acc, item) => acc + item, 0);
+  }
+  return rationalToNumber(value);
+}
+
+function rationalToNumber(value: unknown): number | undefined {
+  if (value == null) return undefined;
+  if (typeof value === 'number') {
+    return Number.isNaN(value) ? undefined : value;
+  }
+  if (typeof value === 'object' && 'numerator' in (value as any) && 'denominator' in (value as any)) {
+    const numerator = Number((value as any).numerator);
+    const denominator = Number((value as any).denominator);
+    if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator === 0) {
+      return undefined;
+    }
+    return numerator / denominator;
+  }
+  return undefined;
 }

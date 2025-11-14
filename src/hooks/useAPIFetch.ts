@@ -10,10 +10,14 @@ async function fetchWithRetry<T>(url: string, retries = 2, init?: RequestInit): 
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 12_000);
-      const response = await fetch(url, { ...init, signal: controller.signal, headers: {
-        'Content-Type': 'application/json',
-        ...(init?.headers ?? {})
-      } });
+      const response = await fetch(url, {
+        ...init,
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(init?.headers ?? {})
+        }
+      });
       clearTimeout(timeout);
       if (!response.ok) {
         lastError = new Error(`status-${response.status}`);
@@ -37,10 +41,13 @@ export function useAPIFetch<T>() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<T | null>(null);
 
-  const request = useCallback(async (url: string) => {
+  const base = import.meta.env.VITE_FUNCTIONS_BASE ?? '';
+
+  const request = useCallback(async (url: string, init?: RequestInit) => {
     setLoading(true);
     setError(null);
-    const result = await fetchWithRetry<T>(url);
+    const target = url.startsWith('http://') || url.startsWith('https://') ? url : `${base}${url}`;
+    const result = await fetchWithRetry<T>(target, 2, init);
     if (result.ok && result.data) {
       setData(result.data);
     } else {
@@ -49,7 +56,7 @@ export function useAPIFetch<T>() {
     }
     setLoading(false);
     return result;
-  }, []);
+  }, [base]);
 
   return { data, loading, error, request };
 }
