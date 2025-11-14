@@ -29,18 +29,26 @@ export function useExifMetadata(fileInfo: BasicFileInfo | null): UseExifMetadata
       setLoading(true);
       setError(null);
       try {
-        const exifData = await exifr.parse(fileInfo.file, {
-          exif: true,
-          gps: true,
-          translateKeys: true
-        });
-        const xmpData = (await exifr.xmp(fileInfo.file)) ?? {};
-        const iptcData = (await exifr.iptc(fileInfo.file)) ?? {};
-        const iccData = (await exifr.icc(fileInfo.file)) ?? {};
+        const [
+          exifDataRaw,
+          gpsDataRaw,
+          xmpDataRaw,
+          iptcDataRaw,
+          iccDataRaw
+        ] = await Promise.all([
+          exifr.exif(fileInfo.file),
+          exifr
+            .gps(fileInfo.file)
+            .then((value) => value as Record<string, unknown> | null)
+            .catch(() => null),
+          exifr.xmp(fileInfo.file).catch(() => ({})),
+          exifr.iptc(fileInfo.file).catch(() => ({})),
+          exifr.icc(fileInfo.file).catch(() => ({}))
+        ]);
 
         if (!active) return;
 
-        const exifRecord = (exifData ?? {}) as Record<string, unknown>;
+        const exifRecord = (exifDataRaw ?? {}) as Record<string, unknown>;
         const shotDateIso = normalizeDateValue(
           pickFirst(exifRecord, ['DateTimeOriginal', 'dateTimeOriginal', 'CreateDate', 'createDate']),
           pickFirst(exifRecord, ['OffsetTimeOriginal', 'offsetTimeOriginal', 'OffsetTime'])
@@ -54,15 +62,15 @@ export function useExifMetadata(fileInfo: BasicFileInfo | null): UseExifMetadata
         const iso = pickFirst<number>(exifRecord, ['ISO', 'iso']);
         const focalLength = pickFirst<number>(exifRecord, ['FocalLength', 'focalLength']);
         const focalLength35mm = pickFirst<number>(exifRecord, ['FocalLengthIn35mmFormat', 'focalLengthIn35MmFormat']);
-        const gps = normalizeGps(exifRecord);
+        const gps = mergeGps(normalizeGps(exifRecord), gpsDataRaw ?? undefined);
         const orientationTag = pickFirst<number | string>(exifRecord, ['Orientation', 'orientation']);
 
         const structured: StructuredMetadata = {
           groups: {
             exif: exifRecord,
-            xmp: xmpData,
-            iptc: iptcData,
-            icc: iccData
+            xmp: (xmpDataRaw ?? {}) as Record<string, unknown>,
+            iptc: (iptcDataRaw ?? {}) as Record<string, unknown>,
+            icc: (iccDataRaw ?? {}) as Record<string, unknown>
           },
           shotDate: shotDateIso,
           cameraMake,
@@ -195,6 +203,43 @@ function normalizeGps(exifRecord: Record<string, unknown>): StructuredMetadata['
     altitude,
     accuracy,
     heading
+  };
+}
+
+function mergeGps(
+  exifGps: StructuredMetadata['gps'] | undefined,
+  gpsData: Record<string, unknown> | undefined
+): StructuredMetadata['gps'] | undefined {
+  const gpsRecord = (gpsData ?? {}) as Record<string, unknown>;
+  const lat = exifGps?.lat ?? toNumber(pickFirst(gpsRecord, ['latitude', 'Latitude', 'lat']));
+  const lon = exifGps?.lon ?? toNumber(pickFirst(gpsRecord, ['longitude', 'Longitude', 'lon']));
+  if (lat == null || lon == null) {
+    return undefined;
+  }
+  return {
+    lat,
+    lon,
+    altitude:
+      exifGps?.altitude ??
+      toNumber(
+        pickFirst(gpsRecord, ['altitude', 'Altitude', 'altitudeMeters', 'AltitudeMeters'])
+      ) ??
+        undefined,
+    accuracy:
+      exifGps?.accuracy ??
+      toNumber(
+        pickFirst(gpsRecord, [
+          'accuracy',
+          'horizontalAccuracy',
+          'hPositioningError',
+          'gpsHPositioningError'
+        ])
+      ) ??
+        undefined,
+    heading:
+      exifGps?.heading ??
+      toNumber(pickFirst(gpsRecord, ['imgDirection', 'heading', 'bearing', 'course'])) ??
+        undefined
   };
 }
 
