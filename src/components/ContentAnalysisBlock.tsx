@@ -3,39 +3,24 @@ import type { DetectionSummary } from '../types/detection';
 import { useT } from '../i18n';
 
 interface ContentAnalysisBlockProps {
-  enabled: boolean;
-  setEnabled: (value: boolean) => void;
   loading: boolean;
   error: string | null;
   summary: DetectionSummary | null;
-  showBoxes: boolean;
-  onToggleBoxes: (value: boolean) => void;
 }
 
-export const ContentAnalysisBlock: React.FC<ContentAnalysisBlockProps> = ({
-  enabled,
-  setEnabled,
-  loading,
-  error,
-  summary,
-  showBoxes,
-  onToggleBoxes
-}) => {
+export const ContentAnalysisBlock: React.FC<ContentAnalysisBlockProps> = ({ loading, error, summary }) => {
   const t = useT();
+  const nothingDetected =
+    summary != null && summary.people === 0 && summary.vehicles === 0 && summary.animals === 0 && !summary.description;
   return (
     <section className="panel">
-      <div className="title-row">
-        <h2 className="section-title">{t('contentAnalysisTitle')}</h2>
-        <label>
-          <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
-          {t('contentToggle')}
-        </label>
-      </div>
+      <h2 className="section-title">{t('contentAnalysisTitle')}</h2>
       {loading ? <p>{t('contentLoading')}</p> : null}
       {error ? <p className="notice">{error}</p> : null}
       {summary ? (
         <div>
           <p>{t('contentResults')}</p>
+          {nothingDetected ? <p className="notice">{t('contentNoDetections')}</p> : null}
           <p>
             {summary.description || t('emptyValue')}
             <br />
@@ -45,11 +30,9 @@ export const ContentAnalysisBlock: React.FC<ContentAnalysisBlockProps> = ({
               animals: summary.animals
             })}
           </p>
-          <label>
-            <input type="checkbox" checked={showBoxes} onChange={(event) => onToggleBoxes(event.target.checked)} />
-            {t('showBoxes')}
-          </label>
         </div>
+      ) : !loading && !error ? (
+        <p className="notice">{t('contentNoDetections')}</p>
       ) : null}
     </section>
   );

@@ -2,10 +2,10 @@ import React from 'react';
 import clsx from 'clsx';
 import { useI18n, useT } from '../i18n';
 
-const languages: { code: 'ru' | 'en' | 'uz'; label: string }[] = [
-  { code: 'ru', label: 'RU' },
-  { code: 'en', label: 'EN' },
-  { code: 'uz', label: 'UZ' }
+const languages: { code: 'ru' | 'en' | 'uz'; flag: string; label: string }[] = [
+  { code: 'ru', flag: '🇷🇺', label: 'Русский' },
+  { code: 'en', flag: '🇺🇸', label: 'English' },
+  { code: 'uz', flag: '🇺🇿', label: 'Oʻzbekcha' }
 ];
 
 export const LanguageSwitcher: React.FC = () => {
@@ -19,8 +19,10 @@ export const LanguageSwitcher: React.FC = () => {
           key={entry.code}
           className={clsx({ active: lang === entry.code })}
           onClick={() => setLanguage(entry.code)}
+          aria-label={entry.label}
         >
-          {entry.label}
+          <span aria-hidden="true">{entry.flag}</span>
+          <span className="sr-only">{entry.label}</span>
         </button>
       ))}
     </div>

@@ -6,15 +6,13 @@ import { useT } from '../i18n';
 interface PreviewViewerProps {
   fileInfo: BasicFileInfo;
   detections: BoundingBox[];
-  showBoxes: boolean;
 }
 
-export const PreviewViewer: React.FC<PreviewViewerProps> = ({ fileInfo, detections, showBoxes }) => {
+export const PreviewViewer: React.FC<PreviewViewerProps> = ({ fileInfo, detections }) => {
   const t = useT();
   const [fullScreen, setFullScreen] = useState(false);
 
   const overlays = useMemo(() => {
-    if (!showBoxes) return null;
     return detections
       .filter((det) => det.score >= 0.5)
       .map((det, index) => {
@@ -48,7 +46,7 @@ export const PreviewViewer: React.FC<PreviewViewerProps> = ({ fileInfo, detectio
           </div>
         );
       });
-  }, [detections, fileInfo.height, fileInfo.width, showBoxes]);
+  }, [detections, fileInfo.height, fileInfo.width]);
 
   return (
     <div>
@@ -62,7 +60,10 @@ export const PreviewViewer: React.FC<PreviewViewerProps> = ({ fileInfo, detectio
             <button type="button" className="fullscreen-close" onClick={() => setFullScreen(false)}>
               {t('fullscreenClose')}
             </button>
-            <img src={fileInfo.dataUrl} alt={fileInfo.file.name} />
+            <div className="fullscreen-media">
+              <img src={fileInfo.dataUrl} alt={fileInfo.file.name} />
+              <div className="fullscreen-overlays">{overlays}</div>
+            </div>
           </div>
         </div>
       ) : null}

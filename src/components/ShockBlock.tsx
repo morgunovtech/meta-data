@@ -23,6 +23,8 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
   const t = useT();
   const [latInput, setLatInput] = useState('');
   const [lonInput, setLonInput] = useState('');
+  const gpsAccuracy = metadata?.gps?.accuracy;
+  const gpsHeading = metadata?.gps?.heading;
 
   useEffect(() => {
     if (manualCoords) {
@@ -148,42 +150,58 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
             </div>
           ) : null}
           {coords ? (
-            <div style={{ display: 'grid', gap: '1rem' }}>
-              <MapBlock lat={coords.lat} lon={coords.lon} accuracy={metadata?.gps?.accuracy} />
-              {reverseFetch.loading ? <p>{t('mapLoading')}</p> : null}
-              {reverseFetch.error ? (
-                <ErrorBanner
-                  message={t('reverseError')}
-                  onRetry={() => reverseFetch.request(`/api/reverse-geocode?lat=${coords.lat}&lon=${coords.lon}`)}
-                />
-              ) : null}
-              {reverseFetch.data ? (
-                <div>
-                  <p>
-                    <strong>{t('addressLabel')}:</strong> {reverseFetch.data.address}
-                  </p>
-                  <p>
-                    <strong>{t('countryLabel')}:</strong> {reverseFetch.data.country} ({reverseFetch.data.countryCode ?? t('emptyValue')})
-                  </p>
-                  <p>
-                    <strong>{t('coordinatesLabel')}:</strong> {coords.lat.toFixed(5)}, {coords.lon.toFixed(5)}
-                  </p>
-                  <p>
-                    <strong>{t('accuracyLabel')}:</strong>{' '}
-                    {reverseFetch.data.precisionMeters
-                      ? t('accuracyMeters', { value: Math.round(reverseFetch.data.precisionMeters) })
-                      : t('emptyValue')}
-                  </p>
-                  <div className="controls-row">
-                    <a href={googleMapsLink(coords.lat, coords.lon)} target="_blank" rel="noreferrer">
-                      {t('openMaps')}
-                    </a>
-                    <a href={streetViewLink(coords.lat, coords.lon, metadata?.gps?.heading)} target="_blank" rel="noreferrer">
-                      {t('openStreetView')}
-                    </a>
-                  </div>
+            <div className="map-layout">
+              <div className="map-layout__map">
+                <MapBlock lat={coords.lat} lon={coords.lon} accuracy={gpsAccuracy} />
+              </div>
+              <div className="map-layout__details">
+                <p>
+                  <strong>{t('coordinatesLabel')}:</strong> {coords.lat.toFixed(5)}, {coords.lon.toFixed(5)}
+                </p>
+                <p>
+                  <strong>{t('accuracyLabel')}:</strong>{' '}
+                  {gpsAccuracy
+                    ? t('accuracyMeters', { value: Math.round(gpsAccuracy) })
+                    : t('emptyValue')}
+                </p>
+                {reverseFetch.loading ? <p>{t('mapLoading')}</p> : null}
+                {reverseFetch.error ? (
+                  <ErrorBanner
+                    message={t('reverseError')}
+                    onRetry={() => reverseFetch.request(`/api/reverse-geocode?lat=${coords.lat}&lon=${coords.lon}`)}
+                  />
+                ) : null}
+                {reverseFetch.data ? (
+                  <>
+                    <p>
+                      <strong>{t('addressLabel')}:</strong> {reverseFetch.data.address}
+                    </p>
+                    <p>
+                      <strong>{t('countryLabel')}:</strong> {reverseFetch.data.country} (
+                      {reverseFetch.data.countryCode ?? t('emptyValue')})
+                    </p>
+                    <p>
+                      <strong>{t('accuracyLabel')}:</strong>{' '}
+                      {reverseFetch.data.precisionMeters
+                        ? t('accuracyMeters', { value: Math.round(reverseFetch.data.precisionMeters) })
+                        : t('emptyValue')}
+                    </p>
+                  </>
+                ) : null}
+                <div className="controls-row controls-row--wrap">
+                  <a className="button button--ghost" href={googleMapsLink(coords.lat, coords.lon)} target="_blank" rel="noreferrer">
+                    {t('openMaps')}
+                  </a>
+                  <a
+                    className="button button--ghost"
+                    href={streetViewLink(coords.lat, coords.lon, gpsHeading)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {t('openStreetView')}
+                  </a>
                 </div>
-              ) : null}
+              </div>
             </div>
           ) : null}
         </section>

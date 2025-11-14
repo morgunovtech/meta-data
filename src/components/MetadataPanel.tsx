@@ -1,7 +1,16 @@
 import React from 'react';
-import { useT } from '../i18n';
+import { useT, type MessageKey } from '../i18n';
 import type { BasicFileInfo, StructuredMetadata } from '../types/metadata';
-import { formatBytes, formatDimensions, formatMegapixels, formatDate, formatPercent, formatAccuracy } from '../utils/format';
+import {
+  formatBytes,
+  formatDimensions,
+  formatMegapixels,
+  formatDate,
+  formatPercent,
+  formatAccuracy,
+  formatExactBytes,
+  describeFileType
+} from '../utils/format';
 
 interface MetadataPanelProps {
   fileInfo: BasicFileInfo;
@@ -11,16 +20,29 @@ interface MetadataPanelProps {
 export const MetadataPanel: React.FC<MetadataPanelProps> = ({ fileInfo, metadata }) => {
   const t = useT();
 
+  const fileName = fileInfo.file.name.replace(/\.[^/.]+$/, '');
+  const { typeKey, format } = describeFileType(fileInfo.mimeType, fileInfo.file.name);
+  const typeLabel = t(typeKey as MessageKey);
+  const orientationKey = metadata?.orientation
+    ? `orientation${capitalize(metadata.orientation)}`
+    : 'orientationUnknown';
+
   return (
     <aside className="panel" aria-label="Metadata">
       <h2 className="section-title">{t('basicInfoTitle')}</h2>
       <div className="metadata-grid">
-        <MetadataItem label={t('nameLabel')} value={fileInfo.file.name} />
-        <MetadataItem label={t('typeLabel')} value={fileInfo.mimeType} />
-        <MetadataItem label={t('sizeLabel')} value={`${formatBytes(fileInfo.sizeBytes)} (${(fileInfo.sizeBytes / (1024 * 1024)).toFixed(1)} MB)`} />
+        <MetadataItem label={t('nameLabel')} value={fileName || fileInfo.file.name} />
+        <MetadataItem label={t('typeLabel')} value={typeLabel} />
+        <MetadataItem label={t('formatLabel')} value={format} />
+        <MetadataItem
+          label={t('sizeLabel')}
+          value={`${formatBytes(fileInfo.sizeBytes)} (${t('sizeExactBytes', {
+            value: formatExactBytes(fileInfo.sizeBytes)
+          })})`}
+        />
         <MetadataItem label={t('dimensionsLabel')} value={`${formatDimensions(fileInfo.width, fileInfo.height)}`} />
         <MetadataItem label={t('megapixelsLabel')} value={formatMegapixels(fileInfo.width, fileInfo.height)} />
-        <MetadataItem label={t('orientationLabel')} value={metadata ? t(`orientation${capitalize(metadata.orientation ?? 'unknown')}` as any) : t('orientationUnknown')} />
+        <MetadataItem label={t('orientationLabel')} value={t(orientationKey as any)} />
       </div>
 
       <h3 className="section-title" style={{ marginTop: '1.5rem', fontSize: '1.2rem' }}>

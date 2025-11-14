@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n';
 import type { BoundingBox, DetectionSummary } from '../types/detection';
 
@@ -16,35 +16,67 @@ async function loadModel() {
 
 export function useImageAnalysis(imageUrl: string | null) {
   const t = useT();
-  const [enabled, setEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detections, setDetections] = useState<BoundingBox[]>([]);
   const [summary, setSummary] = useState<DetectionSummary | null>(null);
-  const [model, setModel] = useState<any>(null);
+  const modelRef = useRef<any | null>(null);
+  const capabilityCheckedRef = useRef(false);
 
   useEffect(() => {
-    if (!enabled) {
+    let cancelled = false;
+
+    const reset = () => {
       setDetections([]);
       setSummary(null);
-      return;
-    }
+    };
+
     if (!imageUrl) {
-      return;
+      reset();
+      setError(null);
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
     }
-    if (!('OffscreenCanvas' in window) && !window.WebGLRenderingContext) {
-      setError(t('contentUnavailable'));
-      setEnabled(false);
-      return;
+
+    if (typeof window === 'undefined') {
+      return () => {
+        cancelled = true;
+      };
     }
-    let cancelled = false;
+
+    const hasWebGL = (() => {
+      if (!window.WebGLRenderingContext) return false;
+      try {
+        const canvas = document.createElement('canvas');
+        return !!(
+          canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+        );
+      } catch (error) {
+        console.warn('webgl-check', error);
+        return false;
+      }
+    })();
+
+    if (!hasWebGL && !('OffscreenCanvas' in window)) {
+      if (!capabilityCheckedRef.current) {
+        setError(t('contentUnavailable'));
+        capabilityCheckedRef.current = true;
+      }
+      reset();
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     const detect = async () => {
       setLoading(true);
       setError(null);
       try {
-        const cocoModel = model ?? (await loadModel());
-        if (!model) {
-          setModel(cocoModel);
+        if (!modelRef.current) {
+          modelRef.current = await loadModel();
         }
         const image = new Image();
         image.src = imageUrl;
@@ -53,7 +85,7 @@ export function useImageAnalysis(imageUrl: string | null) {
           image.onerror = () => reject(new Error('image-load'));
         });
         if (cancelled) return;
-        const predictions = await cocoModel.detect(image, undefined, 0.2);
+        const predictions = await modelRef.current.detect(image, undefined, 0.2);
         if (cancelled) return;
         const boxes: BoundingBox[] = predictions.map((pred: any) => ({
           x: pred.bbox[0],
@@ -63,28 +95,31 @@ export function useImageAnalysis(imageUrl: string | null) {
           score: pred.score,
           label: pred.class
         }));
-        const summary = summarizeDetections(boxes);
+        const summaryValue = summarizeDetections(boxes);
         setDetections(boxes);
-        setSummary(summary);
+        setSummary(summaryValue);
+        capabilityCheckedRef.current = true;
       } catch (err) {
         console.error('analysis', err);
-        setError(t('contentUnavailable'));
-        setEnabled(false);
+        if (!cancelled) {
+          setError(t('contentUnavailable'));
+          reset();
+        }
       } finally {
         if (!cancelled) {
           setLoading(false);
         }
       }
     };
+
     detect();
+
     return () => {
       cancelled = true;
     };
-  }, [enabled, imageUrl, model, t]);
+  }, [imageUrl, t]);
 
   return {
-    enabled,
-    setEnabled,
     loading,
     error,
     detections,

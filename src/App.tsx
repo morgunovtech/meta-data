@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { InfoBlock } from './components/InfoBlock';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { UploadZone } from './components/UploadZone';
@@ -21,8 +21,6 @@ const App: React.FC = () => {
   const { fileInfo, error, loading, processFile, reset } = useImageFile();
   const { metadata } = useExifMetadata(fileInfo);
   const {
-    enabled: analysisEnabled,
-    setEnabled: setAnalysisEnabled,
     loading: analysisLoading,
     error: analysisError,
     detections,
@@ -31,7 +29,6 @@ const App: React.FC = () => {
 
   type NoticeState = { type: 'success' | 'error'; message: string };
 
-  const [showBoxes, setShowBoxes] = useState(false);
   const [manualCoords, setManualCoords] = useState<ManualCoordinates | null>(null);
   const [removeMetadata, setRemoveMetadata] = useState(true);
   const [blurFaces, setBlurFaces] = useState(false);
@@ -44,24 +41,16 @@ const App: React.FC = () => {
     [detections]
   );
 
-  useEffect(() => {
-    if (!analysisEnabled) {
-      setShowBoxes(false);
-    }
-  }, [analysisEnabled]);
-
   const handleFile = useCallback(
     async (file: File) => {
       setManualCoords(null);
-      setShowBoxes(false);
       setRemoveMetadata(true);
       setBlurFaces(false);
       setNotice(null);
-      setAnalysisEnabled(false);
       setJpegQuality(qualityDefault);
       await processFile(file);
     },
-    [processFile, setAnalysisEnabled]
+    [processFile]
   );
 
   const handleDownload = useCallback(async () => {
@@ -150,14 +139,12 @@ const App: React.FC = () => {
   const handleReset = useCallback(() => {
     reset();
     setManualCoords(null);
-    setShowBoxes(false);
     setRemoveMetadata(true);
     setBlurFaces(false);
     setProcessing(false);
     setNotice(null);
     setJpegQuality(qualityDefault);
-    setAnalysisEnabled(false);
-  }, [reset, setAnalysisEnabled]);
+  }, [reset]);
 
   return (
     <div className="app-shell">
@@ -170,13 +157,15 @@ const App: React.FC = () => {
           {t('reset')}
         </button>
       </header>
-      <InfoBlock />
-      <UploadZone loading={loading} onFile={handleFile} error={error ?? undefined} />
+      <div className="intro-grid">
+        <InfoBlock />
+        <UploadZone loading={loading} onFile={handleFile} error={error ?? undefined} />
+      </div>
 
       {fileInfo ? (
         <div className="grid-two-column">
           <div className="panel">
-            <PreviewViewer fileInfo={fileInfo} detections={detections} showBoxes={showBoxes} />
+            <PreviewViewer fileInfo={fileInfo} detections={detections} />
           </div>
           <MetadataPanel fileInfo={fileInfo} metadata={metadata} />
         </div>
@@ -187,15 +176,7 @@ const App: React.FC = () => {
       ) : null}
 
       {fileInfo ? (
-        <ContentAnalysisBlock
-          enabled={analysisEnabled}
-          setEnabled={setAnalysisEnabled}
-          loading={analysisLoading}
-          error={analysisError}
-          summary={analysisSummary}
-          showBoxes={showBoxes}
-          onToggleBoxes={setShowBoxes}
-        />
+        <ContentAnalysisBlock loading={analysisLoading} error={analysisError} summary={analysisSummary} />
       ) : null}
 
       <CleanupDownloadBlock
