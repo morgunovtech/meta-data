@@ -14,6 +14,8 @@ interface CleanupDownloadBlockProps {
   setJpegQuality: (value: number) => void;
   onClean: () => Promise<void>;
   processing: boolean;
+  previewDataUrl: string | null;
+  previewLoading: boolean;
 }
 
 export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
@@ -26,7 +28,9 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
   setBlurFaces,
   setJpegQuality,
   onClean,
-  processing
+  processing,
+  previewDataUrl,
+  previewLoading
 }) => {
   const t = useT();
   return (
@@ -54,6 +58,20 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
         </label>
       </div>
       <p className="notice">{t('cleanupHint')}</p>
+      {fileInfo ? (
+        <div className="cleanup-preview">
+          <h3 className="cleanup-preview__title">{t('cleanupPreviewTitle')}</h3>
+          {previewLoading ? (
+            <p className="notice">{t('cleanupPreviewGenerating')}</p>
+          ) : previewDataUrl ? (
+            <div className="cleanup-preview__frame">
+              <img src={previewDataUrl} alt={t('cleanupPreviewAlt')} className="cleanup-preview__image" />
+            </div>
+          ) : (
+            <p className="notice">{t('cleanupPreviewUnavailable')}</p>
+          )}
+        </div>
+      ) : null}
       <button
         type="button"
         className="button button--primary"

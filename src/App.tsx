@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { InfoBlock } from './components/InfoBlock';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { UploadZone } from './components/UploadZone';
@@ -13,6 +13,25 @@ import { useImageAnalysis } from './hooks/useImageAnalysis';
 import type { ManualCoordinates } from './types/metadata';
 import { useT } from './i18n';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
+
+async function loadImageElement(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.src = src;
+    const cleanup = () => {
+      image.onload = null;
+      image.onerror = null;
+    };
+    image.onload = () => {
+      cleanup();
+      resolve(image);
+    };
+    image.onerror = () => {
+      cleanup();
+      reject(new Error('image-load'));
+    };
+  });
+}
 
 const qualityDefault = 0.92;
 
@@ -35,6 +54,8 @@ const App: React.FC = () => {
   const [jpegQuality, setJpegQuality] = useState(qualityDefault);
   const [processing, setProcessing] = useState(false);
   const [notice, setNotice] = useState<NoticeState | null>(null);
+  const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const personDetections = useMemo(
     () => detections.filter((det) => det.label === 'person'),
@@ -48,10 +69,47 @@ const App: React.FC = () => {
       setBlurFaces(false);
       setNotice(null);
       setJpegQuality(qualityDefault);
+      setPreviewDataUrl(null);
+      setPreviewLoading(true);
       await processFile(file);
     },
     [processFile]
   );
+
+  const createProcessedCanvas = useCallback(async () => {
+    if (!fileInfo) return null;
+    const image = await loadImageElement(fileInfo.dataUrl);
+    const canvas = document.createElement('canvas');
+    canvas.width = fileInfo.width;
+    canvas.height = fileInfo.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('canvas');
+    }
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    if (blurFaces && personDetections.length > 0) {
+      personDetections.forEach((det) => {
+        const padX = Math.max(det.width * 0.25, 16);
+        const padY = Math.max(det.height * 0.25, 16);
+        const x = Math.max(0, det.x - padX);
+        const y = Math.max(0, det.y - padY);
+        const width = Math.max(0, Math.min(canvas.width - x, det.width + padX * 2));
+        const height = Math.max(0, Math.min(canvas.height - y, det.height + padY * 2));
+        ctx.save();
+        ctx.beginPath();
+        if (width > 0 && height > 0) {
+          ctx.rect(x, y, width, height);
+          ctx.clip();
+          ctx.filter = 'blur(28px)';
+          ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+        }
+        ctx.restore();
+      });
+    }
+
+    return canvas;
+  }, [fileInfo, blurFaces, personDetections]);
 
   const handleDownload = useCallback(async () => {
     if (!fileInfo || (!removeMetadata && !blurFaces)) {
@@ -60,36 +118,10 @@ const App: React.FC = () => {
     setProcessing(true);
     setNotice(null);
     try {
-      const image = new Image();
-      image.src = fileInfo.dataUrl;
-      if (image.decode) {
-        await image.decode();
-      } else {
-        await new Promise((resolve, reject) => {
-          image.onload = () => resolve(undefined);
-          image.onerror = () => reject(new Error('image-load'));
-        });
+      const canvas = await createProcessedCanvas();
+      if (!canvas) {
+        throw new Error('no-canvas');
       }
-
-      const canvas = document.createElement('canvas');
-      canvas.width = fileInfo.width;
-      canvas.height = fileInfo.height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('canvas');
-      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-
-      if (blurFaces) {
-        personDetections.forEach((det) => {
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(det.x, det.y, det.width, det.height);
-          ctx.clip();
-          ctx.filter = 'blur(12px)';
-          ctx.drawImage(canvas, det.x, det.y, det.width, det.height, det.x, det.y, det.width, det.height);
-          ctx.restore();
-        });
-      }
-
       const mime = fileInfo.mimeType;
       const extension = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
       const blob: Blob = await new Promise((resolve, reject) => {
@@ -131,7 +163,7 @@ const App: React.FC = () => {
     fileInfo,
     removeMetadata,
     blurFaces,
-    personDetections,
+    createProcessedCanvas,
     jpegQuality,
     t
   ]);
@@ -144,7 +176,46 @@ const App: React.FC = () => {
     setProcessing(false);
     setNotice(null);
     setJpegQuality(qualityDefault);
+    setPreviewDataUrl(null);
+    setPreviewLoading(false);
   }, [reset]);
+
+  useEffect(() => {
+    if (!fileInfo) {
+      setPreviewDataUrl(null);
+      setPreviewLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setPreviewLoading(true);
+    createProcessedCanvas()
+      .then((canvas) => {
+        if (!canvas || cancelled) {
+          return;
+        }
+        const mime = fileInfo.mimeType.includes('png') ? 'image/png' : 'image/jpeg';
+        const quality = mime === 'image/jpeg' ? jpegQuality : undefined;
+        const dataUrl = canvas.toDataURL(mime, quality);
+        if (!cancelled) {
+          setPreviewDataUrl(dataUrl);
+        }
+      })
+      .catch((err) => {
+        console.error('cleanup-preview', err);
+        if (!cancelled) {
+          setPreviewDataUrl(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setPreviewLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fileInfo, blurFaces, jpegQuality, createProcessedCanvas]);
 
   return (
     <div className="app-shell">
@@ -190,6 +261,8 @@ const App: React.FC = () => {
         setJpegQuality={setJpegQuality}
         onClean={handleDownload}
         processing={processing}
+        previewDataUrl={previewDataUrl}
+        previewLoading={previewLoading}
       />
       {notice ? (
         <p className={`notice ${notice.type === 'success' ? 'notice--positive' : 'notice--negative'}`}>
