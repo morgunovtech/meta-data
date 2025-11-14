@@ -40,45 +40,51 @@ export function useExifMetadata(fileInfo: BasicFileInfo | null): UseExifMetadata
 
         if (!active) return;
 
-        const gps = exifData?.gps || (exifData?.latitude && exifData?.longitude
-          ? {
-              lat: exifData.latitude,
-              lon: exifData.longitude,
-              altitude: exifData.altitude,
-              accuracy: exifData.gpsAccuracy || exifData.gpsHPositioningError,
-              heading: exifData.gpsImgDirection
-            }
-          : undefined);
+        const exifRecord = (exifData ?? {}) as Record<string, unknown>;
+        const shotDateIso = normalizeDateValue(
+          pickFirst(exifRecord, ['DateTimeOriginal', 'dateTimeOriginal', 'CreateDate', 'createDate'])
+        );
+        const cameraMake = pickFirst<string>(exifRecord, ['Make', 'make']);
+        const cameraModel = pickFirst<string>(exifRecord, ['Model', 'model']);
+        const lensModel = pickFirst<string>(exifRecord, ['LensModel', 'lensModel']);
+        const rawExposure = pickFirst<string | number>(exifRecord, ['ExposureTime', 'exposureTime']);
+        const exposureTime = formatExposure(rawExposure);
+        const aperture = pickFirst<number>(exifRecord, ['FNumber', 'fNumber']);
+        const iso = pickFirst<number>(exifRecord, ['ISO', 'iso']);
+        const focalLength = pickFirst<number>(exifRecord, ['FocalLength', 'focalLength']);
+        const focalLength35mm = pickFirst<number>(exifRecord, ['FocalLengthIn35mmFormat', 'focalLengthIn35MmFormat']);
+        const gps = normalizeGps(exifRecord);
+        const orientationTag = pickFirst<number | string>(exifRecord, ['Orientation', 'orientation']);
 
         const structured: StructuredMetadata = {
           groups: {
-            exif: exifData ?? {},
+            exif: exifRecord,
             xmp: xmpData,
             iptc: iptcData,
             icc: iccData
           },
-          shotDate: exifData?.DateTimeOriginal || exifData?.CreateDate,
-          cameraMake: exifData?.Make,
-          cameraModel: exifData?.Model,
-          lensModel: exifData?.LensModel,
-          exposureTime: exifData?.ExposureTime ? `1/${Math.round(1 / exifData.ExposureTime)}` : undefined,
-          aperture: exifData?.FNumber,
-          iso: exifData?.ISO,
-          focalLength: exifData?.FocalLength,
-          focalLength35mm: exifData?.FocalLengthIn35mmFormat,
+          shotDate: shotDateIso,
+          cameraMake,
+          cameraModel,
+          lensModel,
+          exposureTime,
+          aperture,
+          iso,
+          focalLength,
+          focalLength35mm,
           gps,
           completeness: computeMetadataCompleteness({
-            shotDate: exifData?.DateTimeOriginal,
-            cameraMake: exifData?.Make,
-            cameraModel: exifData?.Model,
-            lensModel: exifData?.LensModel,
-            exposureTime: exifData?.ExposureTime,
-            aperture: exifData?.FNumber,
-            iso: exifData?.ISO,
-            focalLength: exifData?.FocalLength,
+            shotDate: shotDateIso,
+            cameraMake,
+            cameraModel,
+            lensModel,
+            exposureTime: rawExposure,
+            aperture,
+            iso,
+            focalLength,
             gps
           }),
-          orientation: inferOrientation(fileInfo.width, fileInfo.height, exifData?.Orientation)
+          orientation: inferOrientation(fileInfo.width, fileInfo.height, orientationTag)
         };
 
         setMetadata(structured);
@@ -103,4 +109,75 @@ export function useExifMetadata(fileInfo: BasicFileInfo | null): UseExifMetadata
   const resultError = useMemo(() => error, [error]);
 
   return { metadata, loading, error: resultError };
+}
+
+function pickFirst<T>(source: Record<string, unknown> | undefined, keys: string[]): T | undefined {
+  if (!source) return undefined;
+  for (const key of keys) {
+    if (key in source) {
+      const value = source[key];
+      if (value != null) {
+        return value as T;
+      }
+    }
+  }
+  return undefined;
+}
+
+function normalizeDateValue(value: unknown): string | undefined {
+  if (!value) return undefined;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return undefined;
+    return value.toISOString();
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const normalized = trimmed.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3').replace(' ', 'T');
+    const parsed = new Date(normalized);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+  return undefined;
+}
+
+function formatExposure(value: string | number | undefined): string | undefined {
+  if (value == null) return undefined;
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (value <= 0) return undefined;
+  if (value >= 1) {
+    return value.toFixed(2);
+  }
+  const reciprocal = Math.round(1 / value);
+  return `1/${reciprocal}`;
+}
+
+function normalizeGps(exifRecord: Record<string, unknown>): StructuredMetadata['gps'] | undefined {
+  const gpsRecord = (exifRecord.gps as Record<string, unknown> | undefined) ?? {};
+  const lat =
+    pickFirst<number>(gpsRecord, ['lat', 'latitude']) ??
+    pickFirst<number>(exifRecord, ['latitude', 'Latitude', 'GPSLatitude']);
+  const lon =
+    pickFirst<number>(gpsRecord, ['lon', 'longitude']) ??
+    pickFirst<number>(exifRecord, ['longitude', 'Longitude', 'GPSLongitude']);
+  if (typeof lat !== 'number' || typeof lon !== 'number' || Number.isNaN(lat) || Number.isNaN(lon)) {
+    return undefined;
+  }
+  const altitude = pickFirst<number>(gpsRecord, ['altitude', 'Altitude']) ?? pickFirst<number>(exifRecord, ['Altitude']);
+  const accuracy =
+    pickFirst<number>(gpsRecord, ['accuracy', 'gpsAccuracy']) ??
+    pickFirst<number>(exifRecord, ['gpsAccuracy', 'gpsHPositioningError', 'GPSHPositioningError', 'GPSDOP']);
+  const heading =
+    pickFirst<number>(gpsRecord, ['heading', 'gpsImgDirection']) ??
+    pickFirst<number>(exifRecord, ['gpsImgDirection', 'GPSImgDirection']);
+  return {
+    lat,
+    lon,
+    altitude,
+    accuracy,
+    heading
+  };
 }

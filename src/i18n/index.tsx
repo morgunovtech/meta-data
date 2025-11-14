@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 type Language = 'ru' | 'en' | 'uz';
 
@@ -64,6 +64,8 @@ const messages = {
     holidayNo: 'Обычный день',
     mapTitle: 'Карта и адрес',
     mapMissing: 'GPS в метаданных отсутствует. Можно указать координаты вручную.',
+    mapLoading: 'Получаем адрес…',
+    reverseError: 'Сейчас не получается получить адрес. Это не критично: базовые функции работают локально.',
     addressLabel: 'Адрес',
     countryLabel: 'Страна',
     coordinatesLabel: 'Координаты',
@@ -80,6 +82,7 @@ const messages = {
     poiError: 'Сейчас не получается получить объекты поблизости.',
     poiEmpty: 'Не найдено значимых объектов в радиусе 250 м.',
     surveillanceTitle: 'Вероятные камеры наблюдения',
+    surveillanceLoading: 'Ищем камеры и наблюдение поблизости…',
     surveillanceEmpty: 'Данных о наблюдении поблизости не найдено.',
     contentAnalysisTitle: 'Анализ содержимого',
     contentToggle: 'Анализировать содержимое',
@@ -98,6 +101,10 @@ const messages = {
     applyManual: 'Применить',
     cleanUnavailable: 'Загрузите фото, чтобы очистить и скачать.',
     language: 'Язык',
+    themeLabel: 'Тема',
+    themeLight: 'Светлая',
+    themeDark: 'Тёмная',
+    themeSystem: 'Авто',
     fullscreenClose: 'Закрыть просмотр',
     facesMissing: 'Нет обнаруженных лиц — размывать нечего.',
     downloadReady: 'Файл готов: началась загрузка.',
@@ -171,6 +178,8 @@ const messages = {
     holidayNo: 'Regular day',
     mapTitle: 'Map & address',
     mapMissing: 'No GPS metadata. Provide coordinates manually if needed.',
+    mapLoading: 'Resolving address…',
+    reverseError: 'Reverse geocoding failed. Core features continue to work offline.',
     addressLabel: 'Address',
     countryLabel: 'Country',
     coordinatesLabel: 'Coordinates',
@@ -187,6 +196,7 @@ const messages = {
     poiError: 'Unable to load nearby POIs right now.',
     poiEmpty: 'No notable POIs within 250 m.',
     surveillanceTitle: 'Possible surveillance',
+    surveillanceLoading: 'Looking for surveillance points…',
     surveillanceEmpty: 'No obvious surveillance near the spot.',
     contentAnalysisTitle: 'Content analysis',
     contentToggle: 'Analyze content',
@@ -205,6 +215,10 @@ const messages = {
     applyManual: 'Apply',
     cleanUnavailable: 'Upload a photo to clean & download.',
     language: 'Language',
+    themeLabel: 'Theme',
+    themeLight: 'Light',
+    themeDark: 'Dark',
+    themeSystem: 'Auto',
     fullscreenClose: 'Close viewer',
     facesMissing: 'No faces detected — nothing to blur.',
     downloadReady: 'File ready — download started.',
@@ -278,6 +292,8 @@ const messages = {
     holidayNo: 'Oddiy kun',
     mapTitle: 'Xarita va manzil',
     mapMissing: 'GPS metamaʼlumotlari yo‘q. Kerak bo‘lsa koordinatlarni qo‘lda kiriting.',
+    mapLoading: 'Manzil olinmoqda…',
+    reverseError: 'Manzilni olish muvaffaqiyatsiz. Asosiy funksiyalar ishlashda davom etadi.',
     addressLabel: 'Manzil',
     countryLabel: 'Mamlakat',
     coordinatesLabel: 'Koordinatalar',
@@ -294,6 +310,7 @@ const messages = {
     poiError: 'Hozircha yaqin joylar olinmadi.',
     poiEmpty: '250 m radiusda muhim joylar topilmadi.',
     surveillanceTitle: 'Ehtimoliy kuzatuv nuqtalari',
+    surveillanceLoading: 'Kuzatuv nuqtalari qidirilmoqda…',
     surveillanceEmpty: 'Yaqqol kuzatuv vositalari topilmadi.',
     contentAnalysisTitle: 'Kontent tahlili',
     contentToggle: 'Kontentni tahlil qilish',
@@ -312,6 +329,10 @@ const messages = {
     applyManual: 'Qo‘llash',
     cleanUnavailable: 'Tozalash uchun avval surat yuklang.',
     language: 'Til',
+    themeLabel: 'Ko‘rinish rejimi',
+    themeLight: 'Yorug‘',
+    themeDark: 'Qorong‘i',
+    themeSystem: 'Avto',
     fullscreenClose: 'Yopish',
     facesMissing: 'Yuzlar aniqlanmadi — xira qilish shart emas.',
     downloadReady: 'Fayl tayyor — yuklab olinmoqda.',
@@ -336,12 +357,32 @@ const messages = {
 
 const I18nContext = createContext<I18nContextValue | undefined>(undefined);
 
+const LANG_STORAGE_KEY = 'meta-data-lang';
+
 export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [lang, setLang] = useState<Language>('ru');
+  const [lang, setLang] = useState<Language>(() => {
+    if (typeof window === 'undefined') {
+      return 'ru';
+    }
+    const stored = window.localStorage.getItem(LANG_STORAGE_KEY);
+    if (stored === 'ru' || stored === 'en' || stored === 'uz') {
+      return stored;
+    }
+    return 'ru';
+  });
 
   const setLanguage = useCallback((next: Language) => {
     setLang(next);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(LANG_STORAGE_KEY, next);
+    }
   }, []);
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.lang = lang;
+    }
+  }, [lang]);
 
   const value = useMemo<I18nContextValue>(() => ({
     lang,

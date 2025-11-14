@@ -54,7 +54,12 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
         </label>
       </div>
       <p className="notice">{t('cleanupHint')}</p>
-      <button type="button" onClick={onClean} disabled={!fileInfo || (!removeMetadata && !blurFaces) || processing}>
+      <button
+        type="button"
+        className="button button--primary"
+        onClick={onClean}
+        disabled={!fileInfo || (!removeMetadata && !blurFaces) || processing}
+      >
         {processing ? t('processing') : t('downloadClean')}
       </button>
       {!fileInfo ? <p className="notice">{t('cleanUnavailable')}</p> : null}

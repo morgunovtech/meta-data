@@ -24,6 +24,19 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
   const [latInput, setLatInput] = useState('');
   const [lonInput, setLonInput] = useState('');
 
+  useEffect(() => {
+    if (manualCoords) {
+      setLatInput(manualCoords.lat.toFixed(5));
+      setLonInput(manualCoords.lon.toFixed(5));
+    } else if (metadata?.gps) {
+      setLatInput(metadata.gps.lat.toFixed(5));
+      setLonInput(metadata.gps.lon.toFixed(5));
+    } else {
+      setLatInput('');
+      setLonInput('');
+    }
+  }, [manualCoords, metadata?.gps?.lat, metadata?.gps?.lon]);
+
   const coords = useMemo(() => {
     if (manualCoords) return manualCoords;
     if (metadata?.gps) {
@@ -137,9 +150,10 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
           {coords ? (
             <div style={{ display: 'grid', gap: '1rem' }}>
               <MapBlock lat={coords.lat} lon={coords.lon} accuracy={metadata?.gps?.accuracy} />
+              {reverseFetch.loading ? <p>{t('mapLoading')}</p> : null}
               {reverseFetch.error ? (
                 <ErrorBanner
-                  message={t('poiError')}
+                  message={t('reverseError')}
                   onRetry={() => reverseFetch.request(`/api/reverse-geocode?lat=${coords.lat}&lon=${coords.lon}`)}
                 />
               ) : null}
@@ -220,7 +234,8 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
             <ul className="inline-list">
               {poiFetch.data.map((poi) => (
                 <li key={`${poi.name}-${poi.distance}`}>
-                  <strong>{poi.name || t('emptyValue')}</strong> — {poi.category} ({Math.round(poi.distance)} m)
+                  <strong>{poi.name || t('emptyValue')}</strong> — {poi.category} (
+                  {t('accuracyMeters', { value: Math.round(poi.distance) })})
                 </li>
               ))}
             </ul>
@@ -233,6 +248,7 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
           <h3 className="section-title" style={{ fontSize: '1.1rem' }}>
             {t('surveillanceTitle')}
           </h3>
+          {surveillanceFetch.loading ? <p>{t('surveillanceLoading')}</p> : null}
           {surveillanceFetch.error ? (
             <ErrorBanner
               message={t('poiError')}
@@ -245,7 +261,7 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
             <ul className="inline-list">
               {surveillanceFetch.data.map((poi) => (
                 <li key={`${poi.name}-${poi.distance}`}>
-                  <strong>{poi.name || poi.category}</strong> — {Math.round(poi.distance)} м
+                  <strong>{poi.name || poi.category}</strong> — {t('accuracyMeters', { value: Math.round(poi.distance) })}
                 </li>
               ))}
             </ul>

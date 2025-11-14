@@ -1,5 +1,7 @@
 import React, { useCallback, useRef, useState } from 'react';
+import clsx from 'clsx';
 import { useT } from '../i18n';
+import { ErrorBanner } from './ErrorBanner';
 
 interface UploadZoneProps {
   loading: boolean;
@@ -33,7 +35,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ loading, onFile, error }
     <section className="panel">
       <h2 className="section-title">{t('uploadTitle')}</h2>
       <div
-        className={`drop-zone ${dragOver ? 'drag-over' : ''}`}
+        className={clsx('drop-zone', { 'drag-over': dragOver })}
         onDragEnter={(event) => {
           event.preventDefault();
           setDragOver(true);
@@ -47,6 +49,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ loading, onFile, error }
       >
         <button
           type="button"
+          className="button button--primary"
           onClick={() => inputRef.current?.click()}
           disabled={loading}
         >
@@ -61,7 +64,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ loading, onFile, error }
           onChange={(event) => handleFiles(event.target.files)}
         />
       </div>
-      {error ? <p className="error-banner" style={{ marginTop: '1rem' }}>{error}</p> : null}
+      {error ? <ErrorBanner message={error} /> : null}
     </section>
   );
 };

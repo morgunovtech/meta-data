@@ -15,11 +15,17 @@ export function formatDimensions(width: number, height: number): string {
   return `${width} × ${height}`;
 }
 
-export function formatDate(value?: string): string | undefined {
+export function formatDate(value?: string | Date): string | undefined {
   if (!value) return undefined;
-  const date = new Date(value);
+  const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return undefined;
-  return date.toLocaleString();
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date);
 }
 
 export function formatPercent(value: number): string {

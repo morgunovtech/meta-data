@@ -40,6 +40,7 @@ export function useAPIFetch<T>() {
   const request = useCallback(async (url: string) => {
     setLoading(true);
     setError(null);
+    setData(null);
     const result = await fetchWithRetry<T>(url);
     if (result.ok && result.data) {
       setData(result.data);

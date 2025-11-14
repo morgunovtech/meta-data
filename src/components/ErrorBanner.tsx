@@ -12,7 +12,7 @@ export const ErrorBanner: React.FC<ErrorBannerProps> = ({ message, onRetry }) =>
     <div className="error-banner" role="alert">
       <span>{message}</span>
       {onRetry ? (
-        <button type="button" onClick={onRetry}>
+        <button type="button" className="button button--ghost" onClick={onRetry}>
           {t('retry')}
         </button>
       ) : null}

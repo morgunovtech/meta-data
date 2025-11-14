@@ -1,5 +1,6 @@
 import React from 'react';
-import { useI18n } from '../i18n';
+import clsx from 'clsx';
+import { useI18n, useT } from '../i18n';
 
 const languages: { code: 'ru' | 'en' | 'uz'; label: string }[] = [
   { code: 'ru', label: 'RU' },
@@ -9,13 +10,14 @@ const languages: { code: 'ru' | 'en' | 'uz'; label: string }[] = [
 
 export const LanguageSwitcher: React.FC = () => {
   const { lang, setLanguage } = useI18n();
+  const t = useT();
   return (
-    <div className="lang-switcher" role="group" aria-label="Language selector">
+    <div className="segmented-control" role="group" aria-label={t('language')}>
       {languages.map((entry) => (
         <button
           type="button"
           key={entry.code}
-          className={lang === entry.code ? 'active' : ''}
+          className={clsx({ active: lang === entry.code })}
           onClick={() => setLanguage(entry.code)}
         >
           {entry.label}
