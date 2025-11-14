@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useT } from '../i18n';
+import { useI18n, useT } from '../i18n';
 import type { StructuredMetadata, ManualCoordinates } from '../types/metadata';
 import type {
   ReverseGeocodeResult,
@@ -11,7 +11,27 @@ import { useAPIFetch } from '../hooks/useAPIFetch';
 import { ErrorBanner } from './ErrorBanner';
 import { MapBlock } from './MapBlock';
 import { googleMapsLink, streetViewLink } from '../utils/mapLinks';
-import { formatDate } from '../utils/format';
+import { formatNumber } from '../utils/format';
+import {
+  describeDayPeriod,
+  describeTopPoi,
+  extractSoftware,
+  hasReverseData,
+  inferCameraPosition,
+  inferMovement,
+  resolveLocalTime,
+  summarizeSurveillance,
+  summarizeWeather
+} from '../utils/insights';
+
+type InsightSeverity = 'high' | 'medium' | 'info';
+
+interface InsightItem {
+  id: string;
+  severity: InsightSeverity;
+  title: string;
+  content: React.ReactNode;
+}
 
 interface ShockBlockProps {
   metadata: StructuredMetadata | null;
@@ -21,6 +41,7 @@ interface ShockBlockProps {
 
 export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, onManualCoordsChange }) => {
   const t = useT();
+  const { lang } = useI18n();
   const [latInput, setLatInput] = useState('');
   const [lonInput, setLonInput] = useState('');
   const gpsAccuracy = metadata?.gps?.accuracy;
@@ -75,255 +96,453 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
     surveillanceFetch.request(`/api/surveillance-candidates?lat=${coords.lat}&lon=${coords.lon}`);
   }, [coords]);
 
-  const deviceNarrative = useMemo(() => buildDeviceNarrative(metadata, t), [metadata, t]);
+  const software = useMemo(() => extractSoftware(metadata), [metadata]);
+  const cameraPosition = useMemo(() => inferCameraPosition(metadata), [metadata]);
+  const movement = useMemo(() => inferMovement(metadata), [metadata]);
+  const localContext = useMemo(() => resolveLocalTime(metadata, timezoneFetch.data ?? null), [metadata, timezoneFetch.data]);
+  const weatherSummary = useMemo(() => summarizeWeather(weatherFetch.data ?? null), [weatherFetch.data]);
+  const topPoi = useMemo(() => describeTopPoi(poiFetch.data ?? null), [poiFetch.data]);
+  const surveillanceSummary = useMemo(() => summarizeSurveillance(surveillanceFetch.data ?? null), [surveillanceFetch.data]);
+
+  const localTimeDetails = useMemo(() => {
+    if (!localContext.iso) return null;
+    const date = new Date(localContext.iso);
+    if (Number.isNaN(date.getTime())) return null;
+    const formatted = new Intl.DateTimeFormat(lang, {
+      dateStyle: 'long',
+      timeStyle: 'short'
+    }).format(date);
+    const weekday = new Intl.DateTimeFormat(lang, { weekday: 'long' }).format(date);
+    const periodKey = `dayPeriod${capitalize(describeDayPeriod(date))}` as const;
+    return {
+      formatted,
+      weekday,
+      periodKey
+    };
+  }, [lang, localContext.iso]);
+
+  const insights = useMemo<InsightItem[]>(() => {
+    const list: InsightItem[] = [];
+
+    if (coords) {
+      const accuracyText = gpsAccuracy ? t('insightLocationAccuracy', { accuracy: Math.round(gpsAccuracy) }) : null;
+      let locationContent: React.ReactNode;
+      if (reverseFetch.loading) {
+        locationContent = <p>{t('insightLoading')}</p>;
+      } else if (reverseFetch.error) {
+        locationContent = (
+          <p>
+            {t('insightLocationError', {
+              lat: coords.lat.toFixed(5),
+              lon: coords.lon.toFixed(5)
+            })}
+          </p>
+        );
+      } else if (hasReverseData(reverseFetch.data)) {
+        locationContent = (
+          <>
+            <p>{t('insightLocationAddress', { address: reverseFetch.data.address })}</p>
+            <p>
+              {t('insightLocationCountry', {
+                country: reverseFetch.data.country,
+                code: reverseFetch.data.countryCode ?? t('emptyValue')
+              })}
+            </p>
+          </>
+        );
+      } else {
+        locationContent = (
+          <p>
+            {t('insightLocationCoordinates', {
+              lat: coords.lat.toFixed(5),
+              lon: coords.lon.toFixed(5)
+            })}
+          </p>
+        );
+      }
+
+      list.push({
+        id: 'location',
+        severity: 'high',
+        title: t('insightLocationTitle'),
+        content: (
+          <div className="insight-content">
+            {locationContent}
+            {accuracyText ? <p>{accuracyText}</p> : null}
+            <div className="insight-actions">
+              <a className="button button--ghost" href={googleMapsLink(coords.lat, coords.lon)} target="_blank" rel="noreferrer">
+                {t('openMaps')}
+              </a>
+              <a className="button button--ghost" href={streetViewLink(coords.lat, coords.lon, gpsHeading)} target="_blank" rel="noreferrer">
+                {t('openStreetView')}
+              </a>
+            </div>
+          </div>
+        )
+      });
+    } else {
+      list.push({
+        id: 'location-missing',
+        severity: 'info',
+        title: t('insightLocationTitle'),
+        content: <p>{t('insightLocationMissing')}</p>
+      });
+    }
+
+    if (localTimeDetails) {
+      const holidayText = localContext.holidayName
+        ? t('insightTimeHoliday', {
+            holiday: localContext.holidayName,
+            code: localContext.holidayCode ?? t('emptyValue')
+          })
+        : t('insightTimeNoHoliday');
+      const timezoneText = localContext.timezone ?? t('insightTimeTimezoneUnknown');
+      list.push({
+        id: 'time',
+        severity: 'high',
+        title: t('insightTimeTitle'),
+        content: (
+          <div className="insight-content">
+            <p>
+              {t('insightTimeValue', {
+                date: localTimeDetails.formatted,
+                weekday: capitalize(localTimeDetails.weekday),
+                period: t(localTimeDetails.periodKey)
+              })}
+            </p>
+            <p>{t('insightTimeZone', { timezone: timezoneText })}</p>
+            <p>{holidayText}</p>
+          </div>
+        )
+      });
+    } else {
+      list.push({
+        id: 'time-missing',
+        severity: 'medium',
+        title: t('insightTimeTitle'),
+        content: <p>{t('insightTimeMissing')}</p>
+      });
+    }
+
+    if (metadata?.cameraMake || metadata?.cameraModel) {
+      const deviceName = [metadata?.cameraMake, metadata?.cameraModel].filter(Boolean).join(' ');
+      const lens = metadata?.lensModel;
+      const deviceText = lens
+        ? t('insightDeviceLens', { device: deviceName, lens })
+        : t('insightDeviceSimple', { device: deviceName });
+      list.push({
+        id: 'device',
+        severity: 'high',
+        title: t('insightDeviceTitle'),
+        content: <p>{deviceText}</p>
+      });
+    } else {
+      list.push({
+        id: 'device-missing',
+        severity: 'info',
+        title: t('insightDeviceTitle'),
+        content: <p>{t('insightDeviceUnknown')}</p>
+      });
+    }
+
+    if (software) {
+      list.push({
+        id: 'software',
+        severity: 'medium',
+        title: t('insightOsTitle'),
+        content: <p>{t('insightOsValue', { software })}</p>
+      });
+    } else {
+      list.push({
+        id: 'software-missing',
+        severity: 'info',
+        title: t('insightOsTitle'),
+        content: <p>{t('insightOsUnknown')}</p>
+      });
+    }
+
+    if (cameraPosition !== 'unknown') {
+      const key =
+        cameraPosition === 'front' ? 'insightCameraFront' : cameraPosition === 'rear' ? 'insightCameraRear' : 'insightCameraUnknown';
+      list.push({
+        id: 'camera-position',
+        severity: 'medium',
+        title: t('insightCameraTitle'),
+        content: <p>{t(key)}</p>
+      });
+    }
+
+    if (movement) {
+      const speed = movement.speedKmh ? formatNumber(movement.speedKmh, 1) : undefined;
+      const key = movement.moving ? 'insightMovementMoving' : 'insightMovementStill';
+      list.push({
+        id: 'movement',
+        severity: movement.moving ? 'high' : 'medium',
+        title: t('insightMovementTitle'),
+        content: <p>{t(key, speed ? { speed } : {})}</p>
+      });
+    }
+
+    if (coords && timestamp) {
+      if (weatherFetch.loading) {
+        list.push({
+          id: 'weather-loading',
+          severity: 'info',
+          title: t('insightWeatherTitle'),
+          content: <p>{t('insightLoading')}</p>
+        });
+      } else if (weatherFetch.error) {
+        list.push({
+          id: 'weather-error',
+          severity: 'info',
+          title: t('insightWeatherTitle'),
+          content: <p>{t('insightWeatherError')}</p>
+        });
+      } else if (weatherSummary) {
+        list.push({
+          id: 'weather',
+          severity: 'medium',
+          title: t('insightWeatherTitle'),
+          content: (
+            <p>
+              {t('insightWeatherValue', {
+                temperature: Math.round(weatherSummary.temperature),
+                precipitation: weatherSummary.precipitation.toFixed(1),
+                cloud: Math.round(weatherSummary.cloudCover),
+                wind: Math.round(weatherSummary.windSpeed),
+                pressure: Math.round(weatherSummary.pressure)
+              })}
+            </p>
+          )
+        });
+      }
+    } else {
+      list.push({
+        id: 'weather-missing',
+        severity: 'info',
+        title: t('insightWeatherTitle'),
+        content: <p>{t('insightWeatherMissing')}</p>
+      });
+    }
+
+    if (poiFetch.loading) {
+      list.push({
+        id: 'poi-loading',
+        severity: 'info',
+        title: t('insightPoiTitle'),
+        content: <p>{t('insightLoading')}</p>
+      });
+    } else if (poiFetch.error) {
+      list.push({
+        id: 'poi-error',
+        severity: 'info',
+        title: t('insightPoiTitle'),
+        content: <p>{t('insightPoiError')}</p>
+      });
+    } else if (topPoi) {
+      const poiName = topPoi.name || t('insightPoiUnnamed', { category: topPoi.category });
+      list.push({
+        id: 'poi',
+        severity: 'medium',
+        title: t('insightPoiTitle'),
+        content: (
+          <p>
+            {t('insightPoiValue', {
+              name: poiName,
+              distance: Math.round(topPoi.distance),
+              category: topPoi.category
+            })}
+          </p>
+        )
+      });
+    } else {
+      list.push({
+        id: 'poi-empty',
+        severity: 'info',
+        title: t('insightPoiTitle'),
+        content: <p>{t('insightPoiEmpty')}</p>
+      });
+    }
+
+    if (surveillanceFetch.loading) {
+      list.push({
+        id: 'surveillance-loading',
+        severity: 'info',
+        title: t('insightSurveillanceTitle'),
+        content: <p>{t('insightLoading')}</p>
+      });
+    } else if (surveillanceFetch.error) {
+      list.push({
+        id: 'surveillance-error',
+        severity: 'info',
+        title: t('insightSurveillanceTitle'),
+        content: <p>{t('insightSurveillanceError')}</p>
+      });
+    } else if (surveillanceSummary) {
+      list.push({
+        id: 'surveillance',
+        severity: 'high',
+        title: t('insightSurveillanceTitle'),
+        content: (
+          <p>
+            {t('insightSurveillanceValue', {
+              count: surveillanceSummary.count,
+              distance: surveillanceSummary.nearest ? Math.round(surveillanceSummary.nearest) : 0
+            })}
+          </p>
+        )
+      });
+    } else {
+      list.push({
+        id: 'surveillance-empty',
+        severity: 'info',
+        title: t('insightSurveillanceTitle'),
+        content: <p>{t('insightSurveillanceEmpty')}</p>
+      });
+    }
+
+    return list;
+  }, [
+    coords,
+    gpsAccuracy,
+    reverseFetch.loading,
+    reverseFetch.error,
+    reverseFetch.data,
+    gpsHeading,
+    t,
+    localTimeDetails,
+    localContext.holidayName,
+    localContext.holidayCode,
+    localContext.timezone,
+    metadata?.cameraMake,
+    metadata?.cameraModel,
+    metadata?.lensModel,
+    software,
+    cameraPosition,
+    movement,
+    weatherFetch.loading,
+    weatherFetch.error,
+    weatherSummary,
+    timestamp,
+    poiFetch.loading,
+    poiFetch.error,
+    topPoi,
+    surveillanceFetch.loading,
+    surveillanceFetch.error,
+    surveillanceSummary
+  ]);
 
   return (
     <section className="panel">
       <h2 className="section-title">{t('shockBlockTitle')}</h2>
+      <p className="insight-lead">{t('insightLead')}</p>
 
-      <div style={{ display: 'grid', gap: '1.5rem' }}>
-        <section>
-          <h3 className="section-title" style={{ fontSize: '1.1rem' }}>
-            {t('timezoneTitle')}
-          </h3>
-          {!timestamp ? <p className="notice">{t('timezoneMissing')}</p> : null}
-          {timezoneFetch.loading ? <p>{t('timezoneLoading')}</p> : null}
-          {timezoneFetch.error ? (
-            <ErrorBanner
-              message={t('timezoneError')}
-              onRetry={() =>
-                coords &&
-                timestamp &&
-                timezoneFetch.request(
-                  `/api/timezone-and-holiday?lat=${coords.lat}&lon=${coords.lon}&timestamp=${encodeURIComponent(timestamp)}`
-                )
-              }
+      {!metadata?.gps && !manualCoords ? (
+        <div className="manual-coords">
+          <p>{t('mapMissing')}</p>
+          <div className="controls-row">
+            <input
+              type="number"
+              value={latInput}
+              placeholder={t('manualLat')}
+              onChange={(event) => setLatInput(event.target.value)}
             />
-          ) : null}
-          {timezoneFetch.data ? (
-            <p>
-              {t('timezoneResult', {
-                time: formatDate(timezoneFetch.data.localTimeIso) ?? timezoneFetch.data.localTimeIso,
-                timezone: timezoneFetch.data.timezone
-              })}
-              <br />
-              {timezoneFetch.data.holiday
-                ? `${t('holidayYes')}: ${timezoneFetch.data.holiday.name} (${timezoneFetch.data.holiday.countryCode})`
-                : t('holidayNo')}
-            </p>
-          ) : null}
-        </section>
-
-        <section>
-          <h3 className="section-title" style={{ fontSize: '1.1rem' }}>
-            {t('mapTitle')}
-          </h3>
-          {!metadata?.gps && !manualCoords ? (
-            <div>
-              <p className="notice">{t('mapMissing')}</p>
-              <div className="controls-row">
-                <input
-                  type="number"
-                  value={latInput}
-                  placeholder={t('manualLat')}
-                  onChange={(event) => setLatInput(event.target.value)}
-                />
-                <input
-                  type="number"
-                  value={lonInput}
-                  placeholder={t('manualLon')}
-                  onChange={(event) => setLonInput(event.target.value)}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const lat = Number(latInput);
-                    const lon = Number(lonInput);
-                    if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
-                      onManualCoordsChange({ lat, lon });
-                    }
-                  }}
-                >
-                  {t('applyManual')}
-                </button>
-              </div>
-            </div>
-          ) : null}
-          {coords ? (
-            <div className="map-layout">
-              <div className="map-layout__map">
-                <MapBlock lat={coords.lat} lon={coords.lon} accuracy={gpsAccuracy} />
-              </div>
-              <div className="map-layout__details">
-                <p>
-                  <strong>{t('coordinatesLabel')}:</strong> {coords.lat.toFixed(5)}, {coords.lon.toFixed(5)}
-                </p>
-                <p>
-                  <strong>{t('accuracyLabel')}:</strong>{' '}
-                  {gpsAccuracy
-                    ? t('accuracyMeters', { value: Math.round(gpsAccuracy) })
-                    : t('emptyValue')}
-                </p>
-                {reverseFetch.loading ? <p>{t('mapLoading')}</p> : null}
-                {reverseFetch.error ? (
-                  <ErrorBanner
-                    message={t('reverseError')}
-                    onRetry={() => reverseFetch.request(`/api/reverse-geocode?lat=${coords.lat}&lon=${coords.lon}`)}
-                  />
-                ) : null}
-                {reverseFetch.data ? (
-                  <>
-                    <p>
-                      <strong>{t('addressLabel')}:</strong> {reverseFetch.data.address}
-                    </p>
-                    <p>
-                      <strong>{t('countryLabel')}:</strong> {reverseFetch.data.country} (
-                      {reverseFetch.data.countryCode ?? t('emptyValue')})
-                    </p>
-                    <p>
-                      <strong>{t('accuracyLabel')}:</strong>{' '}
-                      {reverseFetch.data.precisionMeters
-                        ? t('accuracyMeters', { value: Math.round(reverseFetch.data.precisionMeters) })
-                        : t('emptyValue')}
-                    </p>
-                  </>
-                ) : null}
-                <div className="controls-row controls-row--wrap">
-                  <a className="button button--ghost" href={googleMapsLink(coords.lat, coords.lon)} target="_blank" rel="noreferrer">
-                    {t('openMaps')}
-                  </a>
-                  <a
-                    className="button button--ghost"
-                    href={streetViewLink(coords.lat, coords.lon, gpsHeading)}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {t('openStreetView')}
-                  </a>
-                </div>
-              </div>
-            </div>
-          ) : null}
-        </section>
-
-        <section>
-          <h3 className="section-title" style={{ fontSize: '1.1rem' }}>
-            {t('weatherTitle')}
-          </h3>
-          {!coords || !timestamp ? <p className="notice">{t('weatherMissing')}</p> : null}
-          {weatherFetch.loading ? <p>{t('weatherLoading')}</p> : null}
-          {weatherFetch.error ? (
-            <ErrorBanner
-              message={t('weatherError')}
-              onRetry={() =>
-                coords &&
-                timestamp &&
-                weatherFetch.request(
-                  `/api/historical-weather?lat=${coords.lat}&lon=${coords.lon}&timestamp=${encodeURIComponent(timestamp)}`
-                )
-              }
+            <input
+              type="number"
+              value={lonInput}
+              placeholder={t('manualLon')}
+              onChange={(event) => setLonInput(event.target.value)}
             />
-          ) : null}
-          {weatherFetch.data ? (
-            <p>
-              {t('weatherSummary', {
-                temperature: weatherFetch.data.temperature,
-                precipitation: weatherFetch.data.precipitation,
-                cloudCover: weatherFetch.data.cloudCover,
-                windSpeed: weatherFetch.data.windSpeed,
-                pressure: weatherFetch.data.pressure
-              })}
-            </p>
-          ) : null}
-        </section>
+            <button
+              type="button"
+              onClick={() => {
+                const lat = Number(latInput);
+                const lon = Number(lonInput);
+                if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
+                  onManualCoordsChange({ lat, lon });
+                }
+              }}
+            >
+              {t('applyManual')}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
-        <section>
-          <h3 className="section-title" style={{ fontSize: '1.1rem' }}>
-            {t('poiTitle')}
-          </h3>
-          {poiFetch.loading ? <p>{t('poiLoading')}</p> : null}
-          {poiFetch.error ? (
-            <ErrorBanner
-              message={t('poiError')}
-              onRetry={() => coords && poiFetch.request(`/api/nearby-poi?lat=${coords.lat}&lon=${coords.lon}`)}
-            />
-          ) : null}
-          {poiFetch.data?.length ? (
-            <ul className="inline-list">
-              {poiFetch.data.map((poi) => (
-                <li key={`${poi.name}-${poi.distance}`}>
-                  <strong>{poi.name || t('emptyValue')}</strong> — {poi.category} (
-                  {t('accuracyMeters', { value: Math.round(poi.distance) })})
-                </li>
-              ))}
+      <div className="insights-layout">
+        <div className="insight-column">
+          <ul className="insight-list">
+            {insights.map((insight) => (
+              <li key={insight.id} className={`insight-item insight-item--${insight.severity}`}>
+                <h3>{insight.title}</h3>
+                {insight.content}
+              </li>
+            ))}
+          </ul>
+          <div className="insight-errors">
+            {timezoneFetch.error ? (
+              <ErrorBanner
+                message={t('timezoneError')}
+                onRetry={() =>
+                  coords &&
+                  timestamp &&
+                  timezoneFetch.request(
+                    `/api/timezone-and-holiday?lat=${coords.lat}&lon=${coords.lon}&timestamp=${encodeURIComponent(timestamp)}`
+                  )
+                }
+              />
+            ) : null}
+            {reverseFetch.error ? (
+              <ErrorBanner
+                message={t('reverseError')}
+                onRetry={() => coords && reverseFetch.request(`/api/reverse-geocode?lat=${coords.lat}&lon=${coords.lon}`)}
+              />
+            ) : null}
+            {weatherFetch.error ? (
+              <ErrorBanner
+                message={t('weatherError')}
+                onRetry={() =>
+                  coords &&
+                  timestamp &&
+                  weatherFetch.request(
+                    `/api/historical-weather?lat=${coords.lat}&lon=${coords.lon}&timestamp=${encodeURIComponent(timestamp)}`
+                  )
+                }
+              />
+            ) : null}
+            {poiFetch.error ? (
+              <ErrorBanner
+                message={t('poiError')}
+                onRetry={() => coords && poiFetch.request(`/api/nearby-poi?lat=${coords.lat}&lon=${coords.lon}`)}
+              />
+            ) : null}
+            {surveillanceFetch.error ? (
+              <ErrorBanner
+                message={t('poiError')}
+                onRetry={() => coords && surveillanceFetch.request(`/api/surveillance-candidates?lat=${coords.lat}&lon=${coords.lon}`)}
+              />
+            ) : null}
+          </div>
+        </div>
+        {coords ? (
+          <aside className="map-column" aria-label={t('mapTitle')}>
+            <MapBlock lat={coords.lat} lon={coords.lon} accuracy={gpsAccuracy} />
+            <ul className="map-meta">
+              <li>
+                {t('coordinatesLabel')}: {coords.lat.toFixed(5)}, {coords.lon.toFixed(5)}
+              </li>
+              <li>
+                {t('accuracyLabel')}: {gpsAccuracy ? t('accuracyMeters', { value: Math.round(gpsAccuracy) }) : t('emptyValue')}
+              </li>
             </ul>
-          ) : coords && !poiFetch.loading && !poiFetch.error ? (
-            <p className="notice">{t('poiEmpty')}</p>
-          ) : null}
-        </section>
-
-        <section>
-          <h3 className="section-title" style={{ fontSize: '1.1rem' }}>
-            {t('surveillanceTitle')}
-          </h3>
-          {surveillanceFetch.loading ? <p>{t('surveillanceLoading')}</p> : null}
-          {surveillanceFetch.error ? (
-            <ErrorBanner
-              message={t('poiError')}
-              onRetry={() =>
-                coords && surveillanceFetch.request(`/api/surveillance-candidates?lat=${coords.lat}&lon=${coords.lon}`)
-              }
-            />
-          ) : null}
-          {surveillanceFetch.data?.length ? (
-            <ul className="inline-list">
-              {surveillanceFetch.data.map((poi) => (
-                <li key={`${poi.name}-${poi.distance}`}>
-                  <strong>{poi.name || poi.category}</strong> — {t('accuracyMeters', { value: Math.round(poi.distance) })}
-                </li>
-              ))}
-            </ul>
-          ) : coords && !surveillanceFetch.loading && !surveillanceFetch.error ? (
-            <p className="notice">{t('surveillanceEmpty')}</p>
-          ) : null}
-        </section>
-
-        <section>
-          <h3 className="section-title" style={{ fontSize: '1.1rem' }}>
-            {t('cameraModel')}
-          </h3>
-          <p>{deviceNarrative}</p>
-        </section>
+          </aside>
+        ) : null}
       </div>
     </section>
   );
 };
 
-function buildDeviceNarrative(metadata: StructuredMetadata | null, t: ReturnType<typeof useT>): string {
-  if (!metadata) return t('emptyValue');
-  const segments: string[] = [];
-  if (metadata.cameraMake || metadata.cameraModel) {
-    const device = [metadata.cameraMake, metadata.cameraModel].filter(Boolean).join(' ');
-    segments.push(t('narrativeCaptured', { device }));
-  }
-  if (metadata.lensModel) {
-    segments.push(t('narrativeLens', { lens: metadata.lensModel }));
-  }
-  const exif = metadata.groups.exif as Record<string, unknown>;
-  const xmp = metadata.groups.xmp as Record<string, unknown>;
-  const icc = metadata.groups.icc as Record<string, unknown>;
-  const software = typeof exif?.Software === 'string' ? exif.Software : undefined;
-  if (software) {
-    segments.push(t('narrativeSoftware', { software }));
-  }
-  if (xmp && Object.keys(xmp).length > 0) {
-    segments.push(t('narrativeXmp'));
-  }
-  if (icc && Object.keys(icc).length > 0) {
-    segments.push(t('narrativeIcc'));
-  }
-  if (segments.length === 0) {
-    return t('narrativeInsufficient');
-  }
-  return segments.join(' ');
+function capitalize(value: string) {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
