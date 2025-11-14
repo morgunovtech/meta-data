@@ -1,0 +1,117 @@
+import { useEffect, useRef, useState } from 'react';
+import { useT } from '../i18n';
+import type { BoundingBox, DetectionSummary } from '../types/detection';
+
+async function loadModel() {
+  const [{ load }, tf] = await Promise.all([
+    import('@tensorflow-models/coco-ssd'),
+    import('@tensorflow/tfjs')
+  ]);
+  if (typeof window !== 'undefined') {
+    await tf.setBackend('webgl').catch(() => tf.setBackend('cpu'));
+    await tf.ready();
+  }
+  return load({ base: 'lite_mobilenet_v2' });
+}
+
+export function useImageAnalysis(imageUrl: string | null) {
+  const t = useT();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [detections, setDetections] = useState<BoundingBox[]>([]);
+  const [summary, setSummary] = useState<DetectionSummary | null>(null);
+  const modelRef = useRef<any>(null);
+
+  useEffect(() => {
+    setDetections([]);
+    setSummary(null);
+    setError(null);
+    if (!imageUrl) {
+      setLoading(false);
+      return;
+    }
+    if (typeof window === 'undefined') {
+      return;
+    }
+    if (!('OffscreenCanvas' in window) && !window.WebGLRenderingContext) {
+      setError(t('contentUnavailable'));
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const detect = async () => {
+      setLoading(true);
+      try {
+        const cocoModel = modelRef.current ?? (await loadModel());
+        if (!modelRef.current) {
+          modelRef.current = cocoModel;
+        }
+        const image = new Image();
+        image.src = imageUrl;
+        await new Promise((resolve, reject) => {
+          image.onload = resolve;
+          image.onerror = () => reject(new Error('image-load'));
+        });
+        if (cancelled) return;
+        const predictions = await cocoModel.detect(image, undefined, 0.2);
+        if (cancelled) return;
+        const boxes: BoundingBox[] = predictions
+          .filter((pred: any) => pred.score >= 0.5)
+          .map((pred: any) => ({
+            x: pred.bbox[0],
+            y: pred.bbox[1],
+            width: pred.bbox[2],
+            height: pred.bbox[3],
+            score: pred.score,
+            label: pred.class
+          }));
+        setDetections(boxes);
+        setSummary(boxes.length > 0 ? summarizeDetections(boxes) : null);
+      } catch (err) {
+        console.error('analysis', err);
+        setError(t('contentUnavailable'));
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    detect();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [imageUrl, t]);
+
+  return {
+    loading,
+    error,
+    detections,
+    summary
+  };
+}
+
+function summarizeDetections(detections: BoundingBox[]): DetectionSummary {
+  const vehiclesSet = new Set(['car', 'bus', 'truck', 'train', 'bicycle', 'motorcycle']);
+  const animalsSet = new Set(['dog', 'cat', 'bird', 'horse', 'sheep', 'cow']);
+  let people = 0;
+  let vehicles = 0;
+  let animals = 0;
+  const topLabels: string[] = [];
+
+  detections.forEach((d) => {
+    if (d.score < 0.5) return;
+    if (d.label === 'person') people += 1;
+    if (vehiclesSet.has(d.label)) vehicles += 1;
+    if (animalsSet.has(d.label)) animals += 1;
+    if (topLabels.length < 5 && !topLabels.includes(d.label)) {
+      topLabels.push(d.label);
+    }
+  });
+
+  const description = topLabels.length > 0 ? topLabels.join(', ') : '';
+
+  return { people, vehicles, animals, description };
+}
