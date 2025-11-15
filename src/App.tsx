@@ -12,16 +12,11 @@ import { useImageAnalysis } from './hooks/useImageAnalysis';
 import type { ManualCoordinates } from './types/metadata';
 import { useT } from './i18n';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
-import type {
-  AntiSearchParams,
-  CleanupPreviewDimensions,
-  ManualMask,
-  PrivacyLevel,
-  PrivacyPresetId
-} from './types/cleanup';
+import type { AntiSearchParams, CleanupPreviewDimensions, ManualMask, PrivacyLevel, QualityMode } from './types/cleanup';
 import {
   applyAntiSearch,
   applyColorReduction,
+  applyPrnuCleanup,
   applyWatermark,
   blurDetections,
   blurManualMasks,
@@ -47,8 +42,19 @@ async function loadImageElement(src: string): Promise<HTMLImageElement> {
   });
 }
 
-const qualityDefault = 0.92;
 const blurDefault = 28;
+
+function qualityForMode(mode: QualityMode): number {
+  switch (mode) {
+    case 'low':
+      return 0.82;
+    case 'medium':
+      return 0.9;
+    case 'original':
+    default:
+      return 0.98;
+  }
+}
 
 function createAnonymisedName(extension: string): string {
   const random = Math.random().toString(36).slice(2, 8);
@@ -74,7 +80,7 @@ function estimateDataUrlBytes(dataUrl: string): number {
 
 const App: React.FC = () => {
   const t = useT();
-  const { fileInfo, error, loading, processFile, reset } = useImageFile();
+  const { fileInfo, error, loading, processFile } = useImageFile();
   const { metadata } = useExifMetadata(fileInfo);
   const {
     loading: analysisLoading,
@@ -89,16 +95,15 @@ const App: React.FC = () => {
   const [removeMetadata, setRemoveMetadata] = useState(true);
   const [blurFaces, setBlurFaces] = useState(false);
   const [blurStrength, setBlurStrength] = useState(blurDefault);
-  const [jpegQuality, setJpegQuality] = useState(qualityDefault);
+  const [qualityMode, setQualityMode] = useState<QualityMode>('medium');
   const [renameFile, setRenameFile] = useState(false);
   const [manualMaskMode, setManualMaskMode] = useState(false);
   const [manualMasks, setManualMasks] = useState<ManualMask[]>([]);
   const [antiSearchEnabled, setAntiSearchEnabled] = useState(false);
-  const [antiSearchLevel, setAntiSearchLevel] = useState(1);
   const [antiSearchParams, setAntiSearchParams] = useState<AntiSearchParams | null>(null);
   const [reduceColor, setReduceColor] = useState(false);
   const [watermark, setWatermark] = useState(false);
-  const [activePreset, setActivePreset] = useState<PrivacyPresetId | null>(null);
+  const [prnuCleanup, setPrnuCleanup] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
@@ -113,16 +118,11 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (antiSearchEnabled) {
-      setAntiSearchParams((prev) => {
-        if (prev && prev.level === antiSearchLevel) {
-          return prev;
-        }
-        return generateAntiSearchParams(antiSearchLevel);
-      });
+      setAntiSearchParams(generateAntiSearchParams({ level: 3 }));
     } else {
       setAntiSearchParams(null);
     }
-  }, [antiSearchEnabled, antiSearchLevel]);
+  }, [antiSearchEnabled]);
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -131,7 +131,7 @@ const App: React.FC = () => {
       setBlurFaces(false);
       setBlurStrength(blurDefault);
       setNotice(null);
-      setJpegQuality(qualityDefault);
+      setQualityMode('medium');
       setPreviewDataUrl(null);
       setPreviewLoading(true);
       setEstimatedSize(null);
@@ -139,11 +139,10 @@ const App: React.FC = () => {
       setManualMasks([]);
       setManualMaskMode(false);
       setAntiSearchEnabled(false);
-      setAntiSearchLevel(1);
       setAntiSearchParams(null);
       setReduceColor(false);
       setWatermark(false);
-      setActivePreset(null);
+      setPrnuCleanup(false);
       setPreviewDimensions(null);
       await processFile(file);
     },
@@ -171,6 +170,10 @@ const App: React.FC = () => {
     }
 
     let workingCanvas = baseCanvas;
+
+    if (prnuCleanup) {
+      workingCanvas = applyPrnuCleanup(workingCanvas);
+    }
 
     if (antiSearchEnabled && antiSearchParams) {
       workingCanvas = applyAntiSearch(workingCanvas, antiSearchParams);
@@ -211,6 +214,7 @@ const App: React.FC = () => {
       }
       const mime = fileInfo.mimeType;
       const extension = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
+      const jpegQuality = qualityForMode(qualityMode);
       const blob: Blob = await new Promise((resolve, reject) => {
         if (mime === 'image/png') {
           canvas.toBlob((result) => {
@@ -247,37 +251,7 @@ const App: React.FC = () => {
     } finally {
       setProcessing(false);
     }
-  }, [
-    fileInfo,
-    createProcessedCanvas,
-    jpegQuality,
-    renameFile,
-    t
-  ]);
-
-  const handleReset = useCallback(() => {
-    reset();
-    setManualCoords(null);
-    setRemoveMetadata(true);
-    setBlurFaces(false);
-    setBlurStrength(blurDefault);
-    setProcessing(false);
-    setNotice(null);
-    setJpegQuality(qualityDefault);
-    setPreviewDataUrl(null);
-    setPreviewLoading(false);
-    setEstimatedSize(null);
-    setRenameFile(false);
-    setManualMaskMode(false);
-    setManualMasks([]);
-    setAntiSearchEnabled(false);
-    setAntiSearchLevel(1);
-    setAntiSearchParams(null);
-    setReduceColor(false);
-    setWatermark(false);
-    setActivePreset(null);
-    setPreviewDimensions(null);
-  }, [reset]);
+  }, [fileInfo, createProcessedCanvas, qualityMode, renameFile, t]);
 
   useEffect(() => {
     if (!fileInfo) {
@@ -295,7 +269,7 @@ const App: React.FC = () => {
           return;
         }
         const mime = fileInfo.mimeType.includes('png') ? 'image/png' : 'image/jpeg';
-        const quality = mime === 'image/jpeg' ? jpegQuality : undefined;
+        const quality = mime === 'image/jpeg' ? qualityForMode(qualityMode) : undefined;
         const dataUrl = canvas.toDataURL(mime, quality);
         if (!cancelled) {
           setPreviewDataUrl(dataUrl);
@@ -320,7 +294,19 @@ const App: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [fileInfo, blurFaces, jpegQuality, createProcessedCanvas]);
+  }, [
+    fileInfo,
+    blurFaces,
+    manualMasks,
+    blurStrength,
+    antiSearchEnabled,
+    antiSearchParams,
+    reduceColor,
+    watermark,
+    prnuCleanup,
+    qualityMode,
+    createProcessedCanvas
+  ]);
 
   const handleManualMaskAdd = useCallback((mask: Omit<ManualMask, 'id'>) => {
     setManualMasks((current) => {
@@ -333,66 +319,18 @@ const App: React.FC = () => {
     setManualMasks((current) => current.filter((mask) => mask.id !== id));
   }, []);
 
-  const handleManualMaskClear = useCallback(() => {
-    setManualMasks([]);
-  }, []);
-
-  const applyPreset = useCallback(
-    (preset: PrivacyPresetId) => {
-      setActivePreset(preset);
-      switch (preset) {
-        case 'minimal':
-          setRemoveMetadata(true);
-          setRenameFile(true);
-          setBlurFaces(false);
-          setBlurStrength(blurDefault);
-          setManualMaskMode(false);
-          setAntiSearchEnabled(false);
-          setAntiSearchLevel(1);
-          setReduceColor(false);
-          setWatermark(false);
-          setJpegQuality(0.92);
-          break;
-        case 'balanced':
-          setRemoveMetadata(true);
-          setRenameFile(true);
-          setBlurFaces(true);
-          setBlurStrength(blurDefault);
-          setManualMaskMode(false);
-          setAntiSearchEnabled(true);
-          setAntiSearchLevel(1);
-          setReduceColor(false);
-          setWatermark(false);
-          setJpegQuality(0.9);
-          break;
-        case 'maximal':
-          setRemoveMetadata(true);
-          setRenameFile(true);
-          setBlurFaces(true);
-          setBlurStrength(36);
-          setManualMaskMode(false);
-          setAntiSearchEnabled(true);
-          setAntiSearchLevel(3);
-          setReduceColor(true);
-          setWatermark(true);
-          setJpegQuality(0.85);
-          break;
-        default:
-          break;
-      }
-    },
-    []
-  );
 
   const privacyScore = useMemo(() => {
     let score = 0;
     if (removeMetadata) score += 2;
     if (blurFaces && personDetections.length > 0) score += 2;
     if (manualMasks.length > 0) score += 2;
-    if (antiSearchEnabled) score += 1 + antiSearchLevel * 0.5;
+    if (antiSearchEnabled) score += 3;
     if (renameFile) score += 1;
     if (reduceColor) score += 1;
     if (watermark) score += 0.5;
+    if (prnuCleanup) score += 1.5;
+    if (qualityMode !== 'original') score += 1;
     return score;
   }, [
     removeMetadata,
@@ -400,13 +338,40 @@ const App: React.FC = () => {
     personDetections.length,
     manualMasks.length,
     antiSearchEnabled,
-    antiSearchLevel,
     renameFile,
     reduceColor,
-    watermark
+    watermark,
+    prnuCleanup,
+    qualityMode
   ]);
 
   const privacyLevel = useMemo(() => computePrivacyLevel(privacyScore), [privacyScore]);
+
+  const sceneDescription = useMemo(() => {
+    if (!analysisSummary) {
+      if (analysisLoading) return t('sceneDescriptionLoading');
+      if (analysisError) return t('sceneDescriptionUnavailable');
+      return t('sceneDescriptionEmpty');
+    }
+    const segments: string[] = [];
+    if (analysisSummary.people > 0) {
+      segments.push(t('sceneDescriptionPeople', { count: analysisSummary.people }));
+    }
+    if (analysisSummary.vehicles > 0) {
+      segments.push(t('sceneDescriptionVehicles', { count: analysisSummary.vehicles }));
+    }
+    if (analysisSummary.animals > 0) {
+      segments.push(t('sceneDescriptionAnimals', { count: analysisSummary.animals }));
+    }
+    if (analysisSummary.ocrTexts && analysisSummary.ocrTexts.length > 0) {
+      const joined = analysisSummary.ocrTexts.slice(0, 3).join(' • ');
+      segments.push(t('sceneDescriptionText', { text: joined }));
+    }
+    if (segments.length === 0) {
+      return t('sceneDescriptionEmpty');
+    }
+    return t('sceneDescriptionDetected', { items: segments.join('; ') });
+  }, [analysisSummary, analysisLoading, analysisError, t]);
 
   return (
     <div className="app-shell">
@@ -415,9 +380,6 @@ const App: React.FC = () => {
           <LanguageSwitcher />
           <ThemeSwitcher />
         </div>
-        <button type="button" className="button button--ghost" onClick={handleReset}>
-          {t('reset')}
-        </button>
       </header>
       <div className="intro-grid">
         <InfoBlock />
@@ -427,18 +389,19 @@ const App: React.FC = () => {
       {fileInfo ? (
         <div className="grid-two-column">
           <div className="panel">
-            <PreviewViewer fileInfo={fileInfo} detections={detections} />
+            <PreviewViewer fileInfo={fileInfo} detections={detections} sceneDescription={sceneDescription} />
           </div>
-          <MetadataPanel
-            fileInfo={fileInfo}
-            metadata={metadata}
-            analysis={{ loading: analysisLoading, error: analysisError, summary: analysisSummary }}
-          />
+          <MetadataPanel fileInfo={fileInfo} metadata={metadata} />
         </div>
       ) : null}
 
       {fileInfo ? (
-        <ShockBlock metadata={metadata} manualCoords={manualCoords} onManualCoordsChange={setManualCoords} />
+        <ShockBlock
+          metadata={metadata}
+          manualCoords={manualCoords}
+          onManualCoordsChange={setManualCoords}
+          imageDataUrl={fileInfo.dataUrl}
+        />
       ) : null}
 
       <CleanupDownloadBlock
@@ -446,37 +409,35 @@ const App: React.FC = () => {
         removeMetadata={removeMetadata}
         blurFaces={blurFaces}
         blurStrength={blurStrength}
-        jpegQuality={jpegQuality}
+        qualityMode={qualityMode}
         renameFile={renameFile}
         manualMaskMode={manualMaskMode}
         manualMasks={manualMasks}
         antiSearchEnabled={antiSearchEnabled}
-        antiSearchLevel={antiSearchLevel}
         reduceColor={reduceColor}
         watermark={watermark}
-        activePreset={activePreset}
+        prnuCleanup={prnuCleanup}
         privacyLevel={privacyLevel}
         previewDimensions={previewDimensions}
         setRemoveMetadata={setRemoveMetadata}
         setBlurFaces={setBlurFaces}
         setBlurStrength={setBlurStrength}
-        setJpegQuality={setJpegQuality}
+        setQualityMode={setQualityMode}
         setRenameFile={setRenameFile}
         setManualMaskMode={setManualMaskMode}
         onManualMaskAdd={handleManualMaskAdd}
         onManualMaskRemove={handleManualMaskRemove}
-        onManualMaskClear={handleManualMaskClear}
         setAntiSearchEnabled={setAntiSearchEnabled}
-        setAntiSearchLevel={setAntiSearchLevel}
         setReduceColor={setReduceColor}
         setWatermark={setWatermark}
-        onApplyPreset={applyPreset}
+        setPrnuCleanup={setPrnuCleanup}
         onClean={handleDownload}
         processing={processing}
         previewDataUrl={previewDataUrl}
         previewLoading={previewLoading}
         estimatedSize={estimatedSize}
         personDetections={personDetections}
+        originalPreviewUrl={fileInfo?.thumbnailUrl ?? null}
       />
       {notice ? (
         <p className={`notice ${notice.type === 'success' ? 'notice--positive' : 'notice--negative'}`}>

@@ -6,9 +6,10 @@ import { useT } from '../i18n';
 interface PreviewViewerProps {
   fileInfo: BasicFileInfo;
   detections: BoundingBox[];
+  sceneDescription: string;
 }
 
-export const PreviewViewer: React.FC<PreviewViewerProps> = ({ fileInfo, detections }) => {
+export const PreviewViewer: React.FC<PreviewViewerProps> = ({ fileInfo, detections, sceneDescription }) => {
   const t = useT();
   const [fullScreen, setFullScreen] = useState(false);
 
@@ -49,11 +50,12 @@ export const PreviewViewer: React.FC<PreviewViewerProps> = ({ fileInfo, detectio
   }, [detections, fileInfo.height, fileInfo.width]);
 
   return (
-    <div>
+    <div className="preview-panel">
       <div className="preview-wrapper" role="img" aria-label={fileInfo.file.name} onClick={() => setFullScreen(true)}>
         <img src={fileInfo.thumbnailUrl} alt={fileInfo.file.name} style={{ width: '100%', height: 'auto' }} />
         <div style={{ position: 'absolute', inset: 0 }}>{overlays}</div>
       </div>
+      <p className="preview-description">{sceneDescription}</p>
       {fullScreen ? (
         <div className="fullscreen-viewer" onClick={() => setFullScreen(false)}>
           <div className="fullscreen-inner">

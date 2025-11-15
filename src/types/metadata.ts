@@ -22,6 +22,7 @@ export interface StructuredMetadata {
   cameraMake?: string;
   cameraModel?: string;
   lensModel?: string;
+  software?: string;
   exposureTime?: string;
   aperture?: number;
   iso?: number;

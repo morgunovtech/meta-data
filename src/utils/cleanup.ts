@@ -107,7 +107,62 @@ function seededRandom(seed: number): () => number {
   };
 }
 
-export function generateAntiSearchParams(level: number): AntiSearchParams {
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  let h = 0;
+  let s = 0;
+  const l = (max + min) / 2;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case rn:
+        h = (gn - bn) / d + (gn < bn ? 6 : 0);
+        break;
+      case gn:
+        h = (bn - rn) / d + 2;
+        break;
+      default:
+        h = (rn - gn) / d + 4;
+    }
+    h /= 6;
+  }
+  return { h, s, l };
+}
+
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  if (s === 0) {
+    const gray = Math.round(l * 255);
+    return [gray, gray, gray];
+  }
+
+  const hue2rgb = (p: number, q: number, t: number) => {
+    let tn = t;
+    if (tn < 0) tn += 1;
+    if (tn > 1) tn -= 1;
+    if (tn < 1 / 6) return p + (q - p) * 6 * tn;
+    if (tn < 1 / 2) return q;
+    if (tn < 2 / 3) return p + (q - p) * (2 / 3 - tn) * 6;
+    return p;
+  };
+
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const r = hue2rgb(p, q, h + 1 / 3);
+  const g = hue2rgb(p, q, h);
+  const b = hue2rgb(p, q, h - 1 / 3);
+  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+export function generateAntiSearchParams({ level }: { level: number }): AntiSearchParams {
   const safeLevel = Math.max(1, Math.min(level, 3));
   const seed = Math.floor(Math.random() * 1_000_000) + Date.now();
   const rand = seededRandom(seed);
@@ -119,17 +174,22 @@ export function generateAntiSearchParams(level: number): AntiSearchParams {
     left: 1 + Math.floor(rand() * baseCrop)
   };
   const rotation = ((rand() - 0.5) * Math.PI) / (180 / (0.6 + safeLevel * 0.15));
-  const noiseAmplitude = 3 + safeLevel * 2;
-  const brightnessShift = (rand() - 0.5) * 0.03 * safeLevel;
-  const contrastShift = (rand() - 0.5) * 0.04 * safeLevel;
+  const noiseAmplitude = 3 + safeLevel * 2.5;
+  const brightnessShift = (rand() - 0.5) * 0.04 * safeLevel;
+  const contrastShift = (rand() - 0.5) * 0.05 * safeLevel;
+  const saturationShift = (rand() - 0.5) * 0.06 * safeLevel;
+  const hueShift = (rand() - 0.5) * 12 * safeLevel;
+  const warpStrength = 0.004 * safeLevel + rand() * 0.002;
   return {
-    level: safeLevel,
     crop,
     rotation,
     noiseSeed: seed,
     noiseAmplitude,
     brightnessShift,
-    contrastShift
+    contrastShift,
+    saturationShift,
+    hueShift,
+    warpStrength
   };
 }
 
@@ -179,25 +239,45 @@ export function applyAntiSearch(
   const factor = (259 * (contrast * 255 + 255)) / (255 * (259 - contrast * 255));
   for (let i = 0; i < data.length; i += 4) {
     const noise = (rand() - 0.5) * params.noiseAmplitude;
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
     const adjust = (value: number) => {
       let v = value + noise + brightness * 255;
       v = factor * (v - 128) + 128;
-      return Math.max(0, Math.min(255, v));
+      return clamp(v, 0, 255);
     };
-    data[i] = adjust(r);
-    data[i + 1] = adjust(g);
-    data[i + 2] = adjust(b);
+    const r = adjust(data[i]);
+    const g = adjust(data[i + 1]);
+    const b = adjust(data[i + 2]);
+    const { h, s, l } = rgbToHsl(r, g, b);
+    const shiftedH = ((h + params.hueShift / 360) % 1 + 1) % 1;
+    const shiftedS = clamp(s + params.saturationShift, 0, 1);
+    const [nr, ng, nb] = hslToRgb(shiftedH, shiftedS, clamp(l, 0, 1));
+    data[i] = nr;
+    data[i + 1] = ng;
+    data[i + 2] = nb;
   }
   rctx.putImageData(imageData, 0, 0);
 
-  const margin = Math.max(2, params.level + 1);
+  const warpCanvas = document.createElement('canvas');
+  warpCanvas.width = rotatedCanvas.width;
+  warpCanvas.height = rotatedCanvas.height;
+  const wctx = warpCanvas.getContext('2d');
+  if (!wctx) {
+    throw new Error('canvas');
+  }
+  const warpRand = seededRandom(params.noiseSeed + 97);
+  const shearX = (warpRand() - 0.5) * params.warpStrength * 2;
+  const shearY = (warpRand() - 0.5) * params.warpStrength * 2;
+  const shiftX = (warpRand() - 0.5) * params.warpStrength * rotatedCanvas.width;
+  const shiftY = (warpRand() - 0.5) * params.warpStrength * rotatedCanvas.height;
+  wctx.setTransform(1, shearY, shearX, 1, shiftX, shiftY);
+  wctx.drawImage(rotatedCanvas, 0, 0);
+  wctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  const margin = Math.max(2, Math.round(params.noiseAmplitude / 2 + params.warpStrength * 160));
   const finalWidth = Math.max(1, cropped.width - margin * 2);
   const finalHeight = Math.max(1, cropped.height - margin * 2);
-  const sx = Math.max(0, (rotatedCanvas.width - finalWidth) / 2);
-  const sy = Math.max(0, (rotatedCanvas.height - finalHeight) / 2);
+  const sx = clamp((warpCanvas.width - finalWidth) / 2, 0, warpCanvas.width - finalWidth);
+  const sy = clamp((warpCanvas.height - finalHeight) / 2, 0, warpCanvas.height - finalHeight);
   const output = document.createElement('canvas');
   output.width = finalWidth;
   output.height = finalHeight;
@@ -205,17 +285,7 @@ export function applyAntiSearch(
   if (!octx) {
     throw new Error('canvas');
   }
-  octx.drawImage(
-    rotatedCanvas,
-    sx,
-    sy,
-    finalWidth,
-    finalHeight,
-    0,
-    0,
-    finalWidth,
-    finalHeight
-  );
+  octx.drawImage(warpCanvas, sx, sy, finalWidth, finalHeight, 0, 0, finalWidth, finalHeight);
   return output;
 }
 
@@ -234,6 +304,43 @@ export function applyColorReduction(canvas: HTMLCanvasElement): HTMLCanvasElemen
     data[i + 2] = quantised;
   }
   ctx.putImageData(imageData, 0, 0);
+  return canvas;
+}
+
+export function applyPrnuCleanup(canvas: HTMLCanvasElement): HTMLCanvasElement {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('canvas');
+  }
+  const { width, height } = canvas;
+  const original = ctx.getImageData(0, 0, width, height);
+  const data = original.data;
+
+  const blurCanvas = document.createElement('canvas');
+  blurCanvas.width = width;
+  blurCanvas.height = height;
+  const bctx = blurCanvas.getContext('2d');
+  if (!bctx) {
+    throw new Error('canvas');
+  }
+  bctx.filter = 'blur(1.8px)';
+  bctx.drawImage(canvas, 0, 0);
+  bctx.filter = 'none';
+  const blurred = bctx.getImageData(0, 0, width, height);
+  const blurredData = blurred.data;
+
+  const rand = seededRandom(Date.now());
+  for (let i = 0; i < data.length; i += 4) {
+    const residualR = data[i] - blurredData[i];
+    const residualG = data[i + 1] - blurredData[i + 1];
+    const residualB = data[i + 2] - blurredData[i + 2];
+    const noise = (rand() - 0.5) * 10;
+    data[i] = clamp(blurredData[i] + residualR * 0.25 + noise, 0, 255);
+    data[i + 1] = clamp(blurredData[i + 1] + residualG * 0.25 + noise, 0, 255);
+    data[i + 2] = clamp(blurredData[i + 2] + residualB * 0.25 + noise, 0, 255);
+  }
+
+  ctx.putImageData(original, 0, 0);
   return canvas;
 }
 

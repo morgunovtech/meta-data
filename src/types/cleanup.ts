@@ -7,7 +7,6 @@ export interface ManualMask {
 }
 
 export interface AntiSearchParams {
-  level: number;
   crop: {
     top: number;
     right: number;
@@ -19,11 +18,14 @@ export interface AntiSearchParams {
   noiseAmplitude: number;
   brightnessShift: number;
   contrastShift: number;
+  saturationShift: number;
+  hueShift: number;
+  warpStrength: number;
 }
 
 export type PrivacyLevel = 'low' | 'medium' | 'high';
 
-export type PrivacyPresetId = 'minimal' | 'balanced' | 'maximal';
+export type QualityMode = 'low' | 'medium' | 'original';
 
 export interface CleanupPreviewDimensions {
   width: number;

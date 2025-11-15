@@ -5,7 +5,7 @@ import type {
   CleanupPreviewDimensions,
   ManualMask,
   PrivacyLevel,
-  PrivacyPresetId
+  QualityMode
 } from '../types/cleanup';
 import { useT } from '../i18n';
 import { formatBytes } from '../utils/format';
@@ -15,80 +15,81 @@ interface CleanupDownloadBlockProps {
   removeMetadata: boolean;
   blurFaces: boolean;
   blurStrength: number;
-  jpegQuality: number;
+  qualityMode: QualityMode;
   renameFile: boolean;
   manualMaskMode: boolean;
   manualMasks: ManualMask[];
   antiSearchEnabled: boolean;
-  antiSearchLevel: number;
   reduceColor: boolean;
   watermark: boolean;
-  activePreset: PrivacyPresetId | null;
+  prnuCleanup: boolean;
   privacyLevel: PrivacyLevel;
   previewDimensions: CleanupPreviewDimensions | null;
   setRemoveMetadata: (value: boolean) => void;
   setBlurFaces: (value: boolean) => void;
   setBlurStrength: (value: number) => void;
-  setJpegQuality: (value: number) => void;
+  setQualityMode: (mode: QualityMode) => void;
   setRenameFile: (value: boolean) => void;
   setManualMaskMode: (value: boolean) => void;
   onManualMaskAdd: (mask: Omit<ManualMask, 'id'>) => void;
   onManualMaskRemove: (id: string) => void;
-  onManualMaskClear: () => void;
   setAntiSearchEnabled: (value: boolean) => void;
-  setAntiSearchLevel: (value: number) => void;
   setReduceColor: (value: boolean) => void;
   setWatermark: (value: boolean) => void;
-  onApplyPreset: (preset: PrivacyPresetId) => void;
+  setPrnuCleanup: (value: boolean) => void;
   onClean: () => Promise<void>;
   processing: boolean;
   previewDataUrl: string | null;
   previewLoading: boolean;
   estimatedSize: number | null;
   personDetections: BoundingBox[];
+  originalPreviewUrl: string | null;
 }
 
 const DRAW_THRESHOLD = 16;
+
+const QUALITY_PERCENT: Record<QualityMode, number> = {
+  low: Math.round(0.82 * 100),
+  medium: Math.round(0.9 * 100),
+  original: Math.round(0.98 * 100)
+};
 
 export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
   fileInfo,
   removeMetadata,
   blurFaces,
   blurStrength,
-  jpegQuality,
+  qualityMode,
   renameFile,
   manualMaskMode,
   manualMasks,
   antiSearchEnabled,
-  antiSearchLevel,
   reduceColor,
   watermark,
-  activePreset,
+  prnuCleanup,
   privacyLevel,
   previewDimensions,
   setRemoveMetadata,
   setBlurFaces,
   setBlurStrength,
-  setJpegQuality,
+  setQualityMode,
   setRenameFile,
   setManualMaskMode,
   onManualMaskAdd,
   onManualMaskRemove,
-  onManualMaskClear,
   setAntiSearchEnabled,
-  setAntiSearchLevel,
   setReduceColor,
   setWatermark,
-  onApplyPreset,
+  setPrnuCleanup,
   onClean,
   processing,
   previewDataUrl,
   previewLoading,
   estimatedSize,
-  personDetections
+  personDetections,
+  originalPreviewUrl
 }) => {
   const t = useT();
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const [draft, setDraft] = useState<{
     startX: number;
@@ -106,8 +107,6 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
     }
     return t('emptyValue');
   }, [estimatedSize, fileInfo, t]);
-
-  const qualityPercent = useMemo(() => Math.round(jpegQuality * 100), [jpegQuality]);
 
   const finalDimensions = useMemo(() => {
     if (previewDimensions) {
@@ -131,31 +130,36 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
     return t('privacyDiffResolutionChanged', { before, after });
   }, [fileInfo, finalDimensions, t]);
 
-  const peopleCount = useMemo(() => personDetections.filter((det) => det.label === 'person').length, [
-    personDetections
-  ]);
+  const peopleCount = useMemo(
+    () => personDetections.filter((det) => det.label === 'person').length,
+    [personDetections]
+  );
 
   const blurSummary = useMemo(() => {
-    if (blurFaces && peopleCount > 0) {
-      return t('privacyDiffBlurFaces', { count: peopleCount });
-    }
     if (manualMasks.length > 0) {
       return t('privacyDiffBlurManual', { count: manualMasks.length });
     }
+    if (blurFaces && peopleCount > 0) {
+      return t('privacyDiffBlurFaces', { count: peopleCount });
+    }
+    if (blurFaces) {
+      return t('privacyDiffBlurFacesNoDetections');
+    }
     return t('privacyDiffBlurNone');
-  }, [blurFaces, peopleCount, manualMasks.length, t]);
+  }, [blurFaces, manualMasks.length, peopleCount, t]);
 
-  const antiSearchSummary = antiSearchEnabled
-    ? t('privacyDiffAntiSearchLevel', { level: antiSearchLevel })
-    : t('privacyDiffAntiSearchOff');
-
-  const renameSummary = renameFile ? t('privacyDiffRenameOn') : t('privacyDiffRenameOff');
   const metadataSummary = removeMetadata
     ? t('privacyDiffMetadataRemoved')
     : t('privacyDiffMetadataKept');
+  const renameSummary = renameFile ? t('privacyDiffRenameOn') : t('privacyDiffRenameOff');
+  const antiSearchSummary = antiSearchEnabled ? t('privacyDiffAntiSearchOn') : t('privacyDiffAntiSearchOff');
   const colorSummary = reduceColor ? t('privacyDiffColorReduced') : t('privacyDiffColorFull');
   const watermarkSummary = watermark ? t('privacyDiffWatermarkOn') : t('privacyDiffWatermarkOff');
-  const qualitySummary = t('privacyDiffQuality', { value: qualityPercent });
+  const prnuSummary = prnuCleanup ? t('privacyDiffPrnuOn') : t('privacyDiffPrnuOff');
+  const qualitySummary = t('privacyDiffQualityMode', {
+    mode: t(`qualityMode_${qualityMode}` as const),
+    percent: QUALITY_PERCENT[qualityMode]
+  });
 
   const privacyLevelLabel = useMemo(() => {
     switch (privacyLevel) {
@@ -171,23 +175,8 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
   const handleAntiSearchToggle = useCallback(
     (checked: boolean) => {
       setAntiSearchEnabled(checked);
-      if (checked && antiSearchLevel <= 0) {
-        setAntiSearchLevel(1);
-      }
     },
-    [antiSearchLevel, setAntiSearchEnabled, setAntiSearchLevel]
-  );
-
-  const handleAntiSearchSlider = useCallback(
-    (value: number) => {
-      if (value <= 0) {
-        setAntiSearchEnabled(false);
-        return;
-      }
-      setAntiSearchEnabled(true);
-      setAntiSearchLevel(value);
-    },
-    [setAntiSearchEnabled, setAntiSearchLevel]
+    [setAntiSearchEnabled]
   );
 
   const handlePointerDown = useCallback(
@@ -290,24 +279,7 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
         <p className="cleanup-panel__hint">{t('cleanupHint')}</p>
       </div>
 
-      <div className="cleanup-presets">
-        <span className="cleanup-presets__label">{t('privacyPresetLabel')}</span>
-        <div className="cleanup-presets__buttons">
-          {(['minimal', 'balanced', 'maximal'] as PrivacyPresetId[]).map((preset) => (
-            <button
-              key={preset}
-              type="button"
-              className={`button button--ghost ${activePreset === preset ? 'is-active' : ''}`}
-              onClick={() => onApplyPreset(preset)}
-            >
-              {t(`privacyPreset_${preset}` as const)}
-            </button>
-          ))}
-        </div>
-        <p className="cleanup-presets__description">{t('privacyPresetDescription')}</p>
-      </div>
-
-      <div className="cleanup-options">
+      <div className="cleanup-options cleanup-options--grid">
         <label className="cleanup-checkbox">
           <input
             type="checkbox"
@@ -355,147 +327,158 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
             <small>{t('antiSearchHint')}</small>
           </span>
         </label>
-      </div>
-
-      <div className="cleanup-sliders">
-        <div className="range-line">
-          <label>
-            {t('qualityLabel')} ({qualityPercent}%)
-            <input
-              type="range"
-              min="0.7"
-              max="1"
-              step="0.01"
-              value={jpegQuality}
-              onChange={(event) => setJpegQuality(Number(event.target.value))}
-            />
-          </label>
-          <span className="range-line__meta">{t('estimatedOutputSize', { size: estimatedLabel })}</span>
-        </div>
-        {(blurFaces || manualMasks.length > 0) && (
-          <div className="range-line">
-            <label>
-              {t('blurStrengthLabel')}
-              <input
-                type="range"
-                min="8"
-                max="64"
-                step="1"
-                value={blurStrength}
-                onChange={(event) => setBlurStrength(Number(event.target.value))}
-              />
-            </label>
-            <span className="range-line__meta">{`${Math.round(blurStrength)}px`}</span>
-          </div>
-        )}
-        <div className="range-line">
-          <label>
-            {t('antiSearchSliderLabel', { level: antiSearchEnabled ? antiSearchLevel : 0 })}
-            <input
-              type="range"
-              min="0"
-              max="3"
-              step="1"
-              value={antiSearchEnabled ? antiSearchLevel : 0}
-              onChange={(event) => handleAntiSearchSlider(Number(event.target.value))}
-            />
-          </label>
-          <span className="range-line__meta">{antiSearchSummary}</span>
-        </div>
-      </div>
-
-      <div className="cleanup-preview">
-        <h3 className="cleanup-preview__title">{t('cleanupPreviewTitle')}</h3>
-        {manualMaskMode ? <p className="cleanup-preview__hint">{t('manualMaskDrawingHint')}</p> : null}
-        {previewLoading ? (
-          <p className="notice">{t('cleanupPreviewGenerating')}</p>
-        ) : previewDataUrl ? (
-          <div className="cleanup-preview__frame">
-            <img src={previewDataUrl} alt={t('cleanupPreviewAlt')} className="cleanup-preview__image" />
-            <div
-              className={`cleanup-preview__overlay ${manualMaskMode ? 'is-drawing' : ''}`}
-              ref={overlayRef}
-              onPointerDown={handlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onPointerLeave={handlePointerLeave}
-            >
-              {manualMasks.map((mask) => (
-                <div
-                  key={mask.id}
-                  className="cleanup-preview__mask"
-                  style={{
-                    left: `${(mask.x / (fileInfo?.width ?? 1)) * 100}%`,
-                    top: `${(mask.y / (fileInfo?.height ?? 1)) * 100}%`,
-                    width: `${(mask.width / (fileInfo?.width ?? 1)) * 100}%`,
-                    height: `${(mask.height / (fileInfo?.height ?? 1)) * 100}%`
-                  }}
-                />
-              ))}
-              {draftStyle ? <div className="cleanup-preview__mask cleanup-preview__mask--draft" style={draftStyle} /> : null}
-            </div>
-          </div>
-        ) : (
-          <p className="notice">{t('cleanupPreviewUnavailable')}</p>
-        )}
-        {manualMasks.length > 0 ? (
-          <div className="cleanup-mask-list">
-            <div className="cleanup-mask-list__header">
-              <span>{t('manualMaskCount', { count: manualMasks.length })}</span>
-              <button type="button" className="button button--ghost" onClick={onManualMaskClear}>
-                {t('manualMaskClear')}
-              </button>
-            </div>
-            <ul>
-              {manualMasks.map((mask, index) => (
-                <li key={mask.id}>
-                  <span>{t('manualMaskItem', { index: index + 1 })}</span>
-                  <button type="button" className="button button--ghost" onClick={() => onManualMaskRemove(mask.id)}>
-                    {t('manualMaskRemove')}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-        {blurFaces && peopleCount === 0 ? <p className="notice">{t('facesMissing')}</p> : null}
-      </div>
-
-      <details className="cleanup-advanced" open={advancedOpen} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>
-        <summary>{t('advancedToggle')}</summary>
-        <label className="cleanup-checkbox">
+        <label className={`cleanup-checkbox ${prnuCleanup ? 'is-active' : ''}`}>
+          <input type="checkbox" checked={prnuCleanup} onChange={(event) => setPrnuCleanup(event.target.checked)} />
+          <span>
+            <strong>{t('prnuLabel')}</strong>
+            <small>{t('prnuHint')}</small>
+          </span>
+        </label>
+        <label className={`cleanup-checkbox ${reduceColor ? 'is-active' : ''}`}>
           <input type="checkbox" checked={reduceColor} onChange={(event) => setReduceColor(event.target.checked)} />
           <span>
             <strong>{t('reduceColorLabel')}</strong>
             <small>{t('reduceColorHint')}</small>
           </span>
         </label>
-        <label className="cleanup-checkbox">
+        <label className={`cleanup-checkbox ${watermark ? 'is-active' : ''}`}>
           <input type="checkbox" checked={watermark} onChange={(event) => setWatermark(event.target.checked)} />
           <span>
             <strong>{t('watermarkLabel')}</strong>
             <small>{t('watermarkHint')}</small>
           </span>
         </label>
-      </details>
-
-      <div className="cleanup-summary">
-        <h3 className="cleanup-summary__title">{t('privacyDiffTitle')}</h3>
-        <p className={`cleanup-summary__badge cleanup-summary__badge--${privacyLevel}`}>
-          {t('privacyLevelLabel', { level: privacyLevelLabel })}
-        </p>
-        <ul>
-          <li>{metadataSummary}</li>
-          <li>{resolutionSummary}</li>
-          <li>{blurSummary}</li>
-          <li>{antiSearchSummary}</li>
-          <li>{renameSummary}</li>
-          <li>{colorSummary}</li>
-          <li>{watermarkSummary}</li>
-          <li>{qualitySummary}</li>
-        </ul>
-        <p className="cleanup-summary__hint">{t('privacyDiffHint')}</p>
       </div>
+
+      {manualMaskMode ? <p className="cleanup-preview__hint">{t('manualMaskDrawingHint')}</p> : null}
+
+      <div className="cleanup-control-row">
+        <fieldset className="quality-selector">
+          <legend>{t('qualityLabel')}</legend>
+          <div className="quality-selector__options">
+            {(['low', 'medium', 'original'] as QualityMode[]).map((mode) => (
+              <label key={mode} className={`quality-selector__option ${qualityMode === mode ? 'is-active' : ''}`}>
+                <input
+                  type="radio"
+                  name="quality-mode"
+                  value={mode}
+                  checked={qualityMode === mode}
+                  onChange={() => setQualityMode(mode)}
+                />
+                <span>{t(`qualityMode_${mode}` as const)}</span>
+              </label>
+            ))}
+          </div>
+          <span className="quality-selector__meta">
+            {t('qualityPercentLabel', { percent: QUALITY_PERCENT[qualityMode] })} ·{' '}
+            {t('estimatedOutputSize', { size: estimatedLabel })}
+          </span>
+        </fieldset>
+        {(blurFaces || manualMasks.length > 0) && (
+          <div className="range-line range-line--compact">
+            <label htmlFor="blur-strength">{t('blurStrengthLabel')}</label>
+            <input
+              id="blur-strength"
+              type="range"
+              min="8"
+              max="64"
+              step="1"
+              value={blurStrength}
+              onChange={(event) => setBlurStrength(Number(event.target.value))}
+            />
+            <span className="range-line__meta">{t('blurStrengthValue', { value: Math.round(blurStrength) })}</span>
+          </div>
+        )}
+      </div>
+
+      {antiSearchEnabled ? (
+        <p className="notice notice--muted">{t('antiSearchActiveHint')}</p>
+      ) : (
+        <p className="notice notice--muted">{t('antiSearchOffHint')}</p>
+      )}
+
+      <div className="cleanup-diff-grid">
+        <figure className="cleanup-diff-grid__preview">
+          <figcaption>{t('previewOriginal')}</figcaption>
+          {originalPreviewUrl ? (
+            <img src={originalPreviewUrl} alt={t('previewOriginalAlt')} className="cleanup-preview__image" />
+          ) : (
+            <p className="notice">{t('cleanupPreviewUnavailable')}</p>
+          )}
+        </figure>
+        <figure className="cleanup-diff-grid__preview">
+          <figcaption>{t('previewProcessed')}</figcaption>
+          {previewLoading ? (
+            <p className="notice">{t('cleanupPreviewGenerating')}</p>
+          ) : previewDataUrl ? (
+            <div className="cleanup-preview__frame">
+              <img src={previewDataUrl} alt={t('cleanupPreviewAlt')} className="cleanup-preview__image" />
+              <div
+                className={`cleanup-preview__overlay ${manualMaskMode ? 'is-drawing' : ''}`}
+                ref={overlayRef}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerLeave={handlePointerLeave}
+              >
+                {manualMasks.map((mask) => (
+                  <div
+                    key={mask.id}
+                    className="cleanup-preview__mask"
+                    style={{
+                      left: `${(mask.x / (fileInfo?.width ?? 1)) * 100}%`,
+                      top: `${(mask.y / (fileInfo?.height ?? 1)) * 100}%`,
+                      width: `${(mask.width / (fileInfo?.width ?? 1)) * 100}%`,
+                      height: `${(mask.height / (fileInfo?.height ?? 1)) * 100}%`
+                    }}
+                  />
+                ))}
+                {draftStyle ? <div className="cleanup-preview__mask cleanup-preview__mask--draft" style={draftStyle} /> : null}
+              </div>
+            </div>
+          ) : (
+            <p className="notice">{t('cleanupPreviewUnavailable')}</p>
+          )}
+        </figure>
+        <div className="cleanup-summary">
+          <h3 className="cleanup-summary__title">{t('privacyDiffTitle')}</h3>
+          <p className={`cleanup-summary__badge cleanup-summary__badge--${privacyLevel}`}>
+            {t('privacyLevelLabel', { level: privacyLevelLabel })}
+          </p>
+          <ul>
+            <li>{metadataSummary}</li>
+            <li>{resolutionSummary}</li>
+            <li>{blurSummary}</li>
+            <li>{antiSearchSummary}</li>
+            <li>{renameSummary}</li>
+            <li>{colorSummary}</li>
+            <li>{prnuSummary}</li>
+            <li>{watermarkSummary}</li>
+            <li>{qualitySummary}</li>
+          </ul>
+          <p className="cleanup-summary__hint">{t('privacyDiffHint')}</p>
+        </div>
+      </div>
+
+      {manualMasks.length > 0 ? (
+        <div className="cleanup-mask-list">
+          <div className="cleanup-mask-list__header">
+            <span>{t('manualMaskCount', { count: manualMasks.length })}</span>
+          </div>
+          <ul>
+            {manualMasks.map((mask, index) => (
+              <li key={mask.id}>
+                <span>{t('manualMaskItem', { index: index + 1 })}</span>
+                <button type="button" className="button button--ghost" onClick={() => onManualMaskRemove(mask.id)}>
+                  {t('manualMaskRemove')}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {blurFaces && peopleCount === 0 ? <p className="notice">{t('facesMissing')}</p> : null}
 
       <div className="cleanup-actions">
         <button

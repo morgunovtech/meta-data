@@ -51,6 +51,10 @@ export function useExifMetadata(fileInfo: BasicFileInfo | null): UseExifMetadata
         const cameraMake = pickFirst<string>(exifRecord, ['Make', 'make']);
         const cameraModel = pickFirst<string>(exifRecord, ['Model', 'model']);
         const lensModel = pickFirst<string>(exifRecord, ['LensModel', 'lensModel']);
+        const software = pickFirstFromSources<string>(
+          [exifRecord, xmpData as Record<string, unknown> | undefined],
+          ['Software', 'software', 'CreatorTool', 'creatorTool']
+        );
         const rawExposure = pickFirst<string | number>(exifRecord, ['ExposureTime', 'exposureTime']);
         const exposureTime = formatExposure(rawExposure);
         const aperture = pickFirst<number>(exifRecord, ['FNumber', 'fNumber']);
@@ -71,6 +75,7 @@ export function useExifMetadata(fileInfo: BasicFileInfo | null): UseExifMetadata
           cameraMake,
           cameraModel,
           lensModel,
+          software,
           exposureTime,
           aperture,
           iso,

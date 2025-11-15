@@ -85,7 +85,10 @@ export function useImageAnalysis(imageUrl: string | null) {
           image.onerror = () => reject(new Error('image-load'));
         });
         if (cancelled) return;
-        const predictions = await modelRef.current.detect(image, undefined, 0.2);
+        const [predictions, ocrTexts] = await Promise.all([
+          modelRef.current.detect(image, undefined, 0.2),
+          runOcr(imageUrl)
+        ]);
         if (cancelled) return;
         const boxes: BoundingBox[] = predictions.map((pred: any) => ({
           x: pred.bbox[0],
@@ -95,7 +98,7 @@ export function useImageAnalysis(imageUrl: string | null) {
           score: pred.score,
           label: pred.class
         }));
-        const summaryValue = summarizeDetections(boxes);
+        const summaryValue = summarizeDetections(boxes, ocrTexts);
         setDetections(boxes);
         setSummary(summaryValue);
         capabilityCheckedRef.current = true;
@@ -127,7 +130,30 @@ export function useImageAnalysis(imageUrl: string | null) {
   };
 }
 
-function summarizeDetections(detections: BoundingBox[]): DetectionSummary {
+async function runOcr(imageUrl: string): Promise<string[]> {
+  try {
+    const [{ createWorker }] = await Promise.all([import('tesseract.js')]);
+    const worker = await createWorker({
+      workerPath: 'https://unpkg.com/tesseract.js@4.1.1/dist/worker.min.js',
+      langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+      corePath: 'https://unpkg.com/tesseract.js-core@4.0.1/tesseract-core.wasm.js'
+    });
+    await worker.loadLanguage('eng');
+    await worker.initialize('eng');
+    const { data } = await worker.recognize(imageUrl);
+    await worker.terminate();
+    return data.text
+      .split('\n')
+      .map((line: string) => line.trim())
+      .filter((line: string) => line.length > 0)
+      .slice(0, 5);
+  } catch (error) {
+    console.warn('ocr', error);
+    return [];
+  }
+}
+
+function summarizeDetections(detections: BoundingBox[], ocrTexts: string[]): DetectionSummary {
   const vehiclesSet = new Set(['car', 'bus', 'truck', 'train', 'bicycle', 'motorcycle']);
   const animalsSet = new Set(['dog', 'cat', 'bird', 'horse', 'sheep', 'cow']);
   let people = 0;
@@ -147,5 +173,5 @@ function summarizeDetections(detections: BoundingBox[]): DetectionSummary {
 
   const description = topLabels.length > 0 ? topLabels.join(', ') : '';
 
-  return { people, vehicles, animals, description };
+  return { people, vehicles, animals, description, ocrTexts };
 }
