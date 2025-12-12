@@ -3,10 +3,15 @@ import { useT } from '../i18n';
 import type { BasicFileInfo } from '../types/metadata';
 
 const MAX_SIZE_BYTES = 20 * 1024 * 1024;
+const MAX_PIXEL_COUNT = 40_000_000; // guard overly large resolution that may crash canvases
 const SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif', 'image/bmp'];
 
-async function makeThumbnail(dataUrl: string, maxSize = 720): Promise<{ url: string; width: number; height: number }> {
+async function makeThumbnail(
+  dataUrl: string,
+  maxSize = 720
+): Promise<{ url: string; width: number; height: number }> {
   const image = new Image();
+  image.decoding = 'async';
   image.src = dataUrl;
   await new Promise((resolve, reject) => {
     image.onload = resolve;
@@ -74,6 +79,12 @@ export function useImageFile() {
         const objectUrl = URL.createObjectURL(file);
         objectUrlRef.current = objectUrl;
         const { url: thumbnailUrl, width, height } = await makeThumbnail(objectUrl);
+        const pixelCount = width * height;
+        if (pixelCount > MAX_PIXEL_COUNT) {
+          setError(t('fileTooLargeResolution'));
+          setLoading(false);
+          return;
+        }
         const info: BasicFileInfo = {
           file,
           dataUrl: objectUrl,

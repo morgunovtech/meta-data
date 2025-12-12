@@ -273,6 +273,7 @@ type OcrRunResult = { lines: string[]; boxes: BoundingBox[] };
 type CanvasSource = CanvasImageSource & { width: number; height: number };
 const DETECTION_MAX_DIMENSION = 1600;
 const OCR_MAX_DIMENSION = 1800;
+const MAX_ANALYSIS_PIXELS = 14_000_000;
 const DECODE_MAX_DIMENSION = Math.max(DETECTION_MAX_DIMENSION, OCR_MAX_DIMENSION);
 
 type DecodedSource = {
@@ -284,7 +285,8 @@ type DecodedSource = {
 
 async function decodeForAnalysis(fileInfo: BasicFileInfo): Promise<DecodedSource | null> {
   const longestSide = Math.max(fileInfo.width, fileInfo.height) || 1;
-  const targetScale = Math.min(1, DECODE_MAX_DIMENSION / longestSide);
+  const pixelScale = Math.sqrt(MAX_ANALYSIS_PIXELS / Math.max(1, fileInfo.width * fileInfo.height));
+  const targetScale = Math.min(1, DECODE_MAX_DIMENSION / longestSide, pixelScale);
   const targetWidth = Math.max(1, Math.round(fileInfo.width * targetScale));
   const targetHeight = Math.max(1, Math.round(fileInfo.height * targetScale));
 
