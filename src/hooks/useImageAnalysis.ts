@@ -179,6 +179,7 @@ export function useImageAnalysis(imageUrl: string | null) {
           console.info('[analysis] image loaded', { width: image.width, height: image.height });
         }
         if (cancelled) return;
+        const scaledForDetection = scaleImage(image, 1800);
         const handleOcrProgress = (message: { status: string; progress?: number }) => {
           if (cancelled) return;
           const percent = typeof message.progress === 'number' ? Math.round(message.progress * 100) : null;
@@ -190,15 +191,21 @@ export function useImageAnalysis(imageUrl: string | null) {
           );
         };
         const [predictions, ocrResult] = await Promise.all([
-          modelRef.current?.detect ? modelRef.current.detect(image, undefined, 0.2) : Promise.resolve([]),
-          runOcr(image, { signal: abortController.signal, onProgress: handleOcrProgress, t })
+          modelRef.current?.detect
+            ? modelRef.current.detect(scaledForDetection.canvas, undefined, 0.2)
+            : Promise.resolve([]),
+          runOcr(image, {
+            signal: abortController.signal,
+            onProgress: handleOcrProgress,
+            t
+          })
         ]);
         if (cancelled) return;
         const boxes: BoundingBox[] = predictions.map((pred: any) => ({
-          x: pred.bbox[0],
-          y: pred.bbox[1],
-          width: pred.bbox[2],
-          height: pred.bbox[3],
+          x: pred.bbox[0] * scaledForDetection.scaleX,
+          y: pred.bbox[1] * scaledForDetection.scaleY,
+          width: pred.bbox[2] * scaledForDetection.scaleX,
+          height: pred.bbox[3] * scaledForDetection.scaleY,
           score: pred.score,
           label: pred.class
         }));
@@ -265,12 +272,12 @@ async function runOcr(image: HTMLImageElement, options: RunOcrOptions): Promise<
     if (!worker || signal?.aborted) {
       return null;
     }
-    const preprocessed = await preprocessImage(image, signal);
+    const preprocessed = await preprocessImageForOcr(image, signal);
     if (!preprocessed || signal?.aborted) {
       return null;
     }
     onProgress?.({ status: 'recognizing text', progress: 0 });
-    const { data } = await worker.recognize(preprocessed);
+    const { data } = await worker.recognize(preprocessed.canvas);
     onProgress?.({ status: 'recognizing text', progress: 1 });
     if (signal?.aborted) {
       return null;
@@ -284,11 +291,11 @@ async function runOcr(image: HTMLImageElement, options: RunOcrOptions): Promise<
       .filter((word) => word?.text?.trim())
       .map((word) => {
         const { bbox } = word;
-        const width = Math.max(1, bbox.x1 - bbox.x0);
-        const height = Math.max(1, bbox.y1 - bbox.y0);
+        const width = Math.max(1, (bbox.x1 - bbox.x0) * preprocessed.scaleX);
+        const height = Math.max(1, (bbox.y1 - bbox.y0) * preprocessed.scaleY);
         return {
-          x: bbox.x0,
-          y: bbox.y0,
+          x: bbox.x0 * preprocessed.scaleX,
+          y: bbox.y0 * preprocessed.scaleY,
           width,
           height,
           score: typeof word.confidence === 'number' ? word.confidence / 100 : 0.5,
@@ -316,20 +323,34 @@ function mapOcrStatus(status: string, t: ReturnType<typeof useT>): string {
   return statusMap[status] ?? status;
 }
 
-async function preprocessImage(
+type ScaledCanvas = { canvas: HTMLCanvasElement; scaleX: number; scaleY: number };
+
+function scaleImage(image: HTMLImageElement | HTMLCanvasElement, maxDimension = 2000): ScaledCanvas {
+  const canvas = document.createElement('canvas');
+  const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+  const width = Math.max(1, Math.round(image.width * scale));
+  const height = Math.max(1, Math.round(image.height * scale));
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('canvas');
+  }
+  ctx.drawImage(image as CanvasImageSource, 0, 0, width, height);
+  const scaleX = image.width / width;
+  const scaleY = image.height / height;
+  return { canvas, scaleX, scaleY };
+}
+
+async function preprocessImageForOcr(
   image: HTMLImageElement,
   signal?: AbortSignal
-): Promise<HTMLCanvasElement | null> {
+): Promise<(ScaledCanvas & { canvas: HTMLCanvasElement }) | null> {
   if (signal?.aborted) return null;
-  const canvas = document.createElement('canvas');
-  const maxDimension = 2000;
-  const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
-  canvas.width = Math.max(1, Math.round(image.width * scale));
-  canvas.height = Math.max(1, Math.round(image.height * scale));
+  const scaled = scaleImage(image, 2000);
+  const { canvas } = scaled;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
-  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-  if (signal?.aborted) return null;
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const { data } = imageData;
   let sum = 0;
@@ -349,7 +370,7 @@ async function preprocessImage(
     data[i + 2] = value;
   }
   ctx.putImageData(imageData, 0, 0);
-  return canvas;
+  return scaled;
 }
 
 function summarizeDetections(detections: BoundingBox[], ocrTexts: string[]): DetectionSummary {
