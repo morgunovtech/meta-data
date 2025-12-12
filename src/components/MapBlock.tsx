@@ -15,21 +15,35 @@ export const MapBlock: React.FC<MapBlockProps> = ({ lat, lon, accuracy }) => {
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: 'https://demotiles.maplibre.org/style.json',
-      center: [lon, lat],
-      zoom: 15,
-      attributionControl: true
-    });
-    mapRef.current = map;
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }));
-    const marker = new maplibregl.Marker({ color: '#38bdf8' }).setLngLat([lon, lat]).addTo(map);
+    if (!maplibregl.supported({ failIfMajorPerformanceCaveat: false })) {
+      console.warn('maplibre unsupported: no WebGL');
+      return;
+    }
+    let map: maplibregl.Map | null = null;
+    let marker: maplibregl.Marker | null = null;
+    try {
+      map = new maplibregl.Map({
+        container: containerRef.current,
+        style: 'https://demotiles.maplibre.org/style.json',
+        center: [lon, lat],
+        zoom: 15,
+        attributionControl: true
+      });
+      mapRef.current = map;
+      map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }));
+      marker = new maplibregl.Marker({ color: '#38bdf8' }).setLngLat([lon, lat]).addTo(map);
+    } catch (error) {
+      console.warn('maplibre-init', error);
+      mapRef.current = null;
+      return;
+    }
 
     return () => {
-      marker.remove();
-      clearAccuracy(map);
-      map.remove();
+      marker?.remove();
+      if (map) {
+        clearAccuracy(map);
+        map.remove();
+      }
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
