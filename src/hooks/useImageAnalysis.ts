@@ -14,6 +14,34 @@ async function loadModel() {
   return load({ base: 'lite_mobilenet_v2' });
 }
 
+type OcrWorker = Awaited<ReturnType<(typeof import('tesseract.js'))['createWorker']>>;
+
+let cachedOcrWorkerPromise: Promise<OcrWorker | null> | null = null;
+
+async function getOcrWorker(signal?: AbortSignal): Promise<OcrWorker | null> {
+  if (signal?.aborted) return null;
+  if (!cachedOcrWorkerPromise) {
+    cachedOcrWorkerPromise = (async () => {
+      try {
+        const [{ createWorker }] = await Promise.all([import('tesseract.js')]);
+        const worker = await createWorker({
+          workerPath: 'https://unpkg.com/tesseract.js@4.1.1/dist/worker.min.js',
+          langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+          corePath: 'https://unpkg.com/tesseract.js-core@4.0.1/tesseract-core.wasm.js'
+        });
+        await worker.loadLanguage('eng');
+        await worker.initialize('eng');
+        return worker;
+      } catch (error) {
+        console.warn('ocr-init', error);
+        cachedOcrWorkerPromise = null;
+        return null;
+      }
+    })();
+  }
+  return cachedOcrWorkerPromise;
+}
+
 export function useImageAnalysis(imageUrl: string | null) {
   const t = useT();
   const [loading, setLoading] = useState(false);
@@ -71,6 +99,8 @@ export function useImageAnalysis(imageUrl: string | null) {
       };
     }
 
+    const abortController = new AbortController();
+
     const detect = async () => {
       setLoading(true);
       setError(null);
@@ -87,7 +117,7 @@ export function useImageAnalysis(imageUrl: string | null) {
         if (cancelled) return;
         const [predictions, ocrTexts] = await Promise.all([
           modelRef.current.detect(image, undefined, 0.2),
-          runOcr(imageUrl)
+          runOcr(imageUrl, abortController.signal)
         ]);
         if (cancelled) return;
         const boxes: BoundingBox[] = predictions.map((pred: any) => ({
@@ -119,6 +149,7 @@ export function useImageAnalysis(imageUrl: string | null) {
 
     return () => {
       cancelled = true;
+      abortController.abort();
     };
   }, [imageUrl, t]);
 
@@ -130,18 +161,18 @@ export function useImageAnalysis(imageUrl: string | null) {
   };
 }
 
-async function runOcr(imageUrl: string): Promise<string[]> {
+async function runOcr(imageUrl: string, signal?: AbortSignal): Promise<string[]> {
+  if (signal?.aborted) return [];
+
   try {
-    const [{ createWorker }] = await Promise.all([import('tesseract.js')]);
-    const worker = await createWorker({
-      workerPath: 'https://unpkg.com/tesseract.js@4.1.1/dist/worker.min.js',
-      langPath: 'https://tessdata.projectnaptha.com/4.0.0',
-      corePath: 'https://unpkg.com/tesseract.js-core@4.0.1/tesseract-core.wasm.js'
-    });
-    await worker.loadLanguage('eng');
-    await worker.initialize('eng');
+    const worker = await getOcrWorker(signal);
+    if (!worker || signal?.aborted) {
+      return [];
+    }
     const { data } = await worker.recognize(imageUrl);
-    await worker.terminate();
+    if (signal?.aborted) {
+      return [];
+    }
     return data.text
       .split('\n')
       .map((line: string) => line.trim())
