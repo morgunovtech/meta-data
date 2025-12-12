@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "prepare:ocr": "node scripts/prepare-ocr-assets.mjs",
+    "smoke:ocr": "node scripts/smoke-ocr.mjs",
     "postinstall": "npm run prepare:ocr || true"
   },
   "dependencies": {

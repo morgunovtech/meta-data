@@ -3,10 +3,17 @@ import { useT } from '../i18n';
 import type { BoundingBox, DetectionSummary } from '../types/detection';
 
 async function loadModel() {
-  const [{ load }, tf] = await Promise.all([
+  const resolved = await Promise.all([
     import('@tensorflow-models/coco-ssd'),
     import('@tensorflow/tfjs')
-  ]);
+  ]).catch((error) => {
+    console.warn('analysis-model-load', error);
+    return null;
+  });
+
+  if (!resolved) return null;
+
+  const [{ load }, tf] = resolved;
   if (typeof window !== 'undefined') {
     await tf.setBackend('webgl').catch(() => tf.setBackend('cpu'));
     await tf.ready();
@@ -153,8 +160,14 @@ export function useImageAnalysis(imageUrl: string | null) {
       setError(null);
       setOcrStatus(null);
       try {
+        if (import.meta.env.DEV) {
+          console.info('[pipeline] analyze:start');
+        }
         if (!modelRef.current) {
           modelRef.current = await loadModel();
+          if (!modelRef.current && import.meta.env.DEV) {
+            console.info('[pipeline] analyze:skip-detection (model unavailable)');
+          }
         }
         const image = new Image();
         image.src = imageUrl;
@@ -177,7 +190,7 @@ export function useImageAnalysis(imageUrl: string | null) {
           );
         };
         const [predictions, ocrResult] = await Promise.all([
-          modelRef.current.detect(image, undefined, 0.2),
+          modelRef.current?.detect ? modelRef.current.detect(image, undefined, 0.2) : Promise.resolve([]),
           runOcr(image, { signal: abortController.signal, onProgress: handleOcrProgress, t })
         ]);
         if (cancelled) return;
@@ -193,6 +206,13 @@ export function useImageAnalysis(imageUrl: string | null) {
         const summaryValue = summarizeDetections([...boxes, ...ocrBoxes], ocrResult?.lines ?? []);
         setDetections([...boxes, ...ocrBoxes]);
         setSummary(summaryValue);
+        if (import.meta.env.DEV) {
+          console.info('[pipeline] analyze:done', {
+            objects: boxes.length,
+            textBoxes: ocrBoxes.length,
+            lines: ocrResult?.lines?.length ?? 0
+          });
+        }
         capabilityCheckedRef.current = true;
         setOcrStatus(null);
       } catch (err) {

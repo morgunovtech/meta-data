@@ -52,6 +52,9 @@ export function useImageFile() {
     async (file: File) => {
       setLoading(true);
       setError(null);
+      if (import.meta.env.DEV) {
+        console.info('[pipeline] upload:start', { name: file.name, type: file.type, size: file.size });
+      }
       try {
         if (file.size > MAX_SIZE_BYTES) {
           setError(t('fileTooLarge', { limit: 20 }));
@@ -80,6 +83,9 @@ export function useImageFile() {
           mimeType: file.type
         };
         setFileInfo(info);
+        if (import.meta.env.DEV) {
+          console.info('[pipeline] upload:ready', { width, height, mime: file.type });
+        }
       } catch (err) {
         console.error('file-processing', err);
         setError(t('corruptedFile'));

@@ -312,6 +312,9 @@ const App: React.FC = () => {
     setProcessing(true);
     setNotice(null);
     try {
+      if (import.meta.env.DEV) {
+        console.info('[pipeline] export:start', { mime: fileInfo.mimeType, qualityMode });
+      }
       const canvas = await createProcessedCanvas();
       if (!canvas) {
         throw new Error('no-canvas');
@@ -349,6 +352,9 @@ const App: React.FC = () => {
         document.body.removeChild(link);
       }, 2000);
       setNotice({ type: 'success', message: t('downloadReady') });
+      if (import.meta.env.DEV) {
+        console.info('[pipeline] export:done');
+      }
     } catch (err) {
       console.error(err);
       setNotice({ type: 'error', message: t('cleanupFailed') });
