@@ -1,20 +1,9 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n';
 import type { BasicFileInfo } from '../types/metadata';
 
 const MAX_SIZE_BYTES = 20 * 1024 * 1024;
 const SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif', 'image/bmp'];
-
-async function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('read-error'));
-    reader.onload = () => {
-      resolve(reader.result as string);
-    };
-    reader.readAsDataURL(file);
-  });
-}
 
 async function makeThumbnail(dataUrl: string, maxSize = 720): Promise<{ url: string; width: number; height: number }> {
   const image = new Image();
@@ -42,16 +31,28 @@ export function useImageFile() {
   const [fileInfo, setFileInfo] = useState<BasicFileInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const objectUrlRef = useRef<string | null>(null);
+
+  const revokeObjectUrl = useCallback(() => {
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => revokeObjectUrl, [revokeObjectUrl]);
 
   const reset = useCallback(() => {
     setFileInfo(null);
     setError(null);
-  }, []);
+    revokeObjectUrl();
+  }, [revokeObjectUrl]);
 
   const processFile = useCallback(
     async (file: File) => {
       setLoading(true);
       setError(null);
+      revokeObjectUrl();
       if (import.meta.env.DEV) {
         console.info('[pipeline] upload:start', { name: file.name, type: file.type, size: file.size });
       }
@@ -70,11 +71,12 @@ export function useImageFile() {
           setLoading(false);
           return;
         }
-        const dataUrl = await fileToDataUrl(file);
-        const { url: thumbnailUrl, width, height } = await makeThumbnail(dataUrl);
+        const objectUrl = URL.createObjectURL(file);
+        objectUrlRef.current = objectUrl;
+        const { url: thumbnailUrl, width, height } = await makeThumbnail(objectUrl);
         const info: BasicFileInfo = {
           file,
-          dataUrl,
+          dataUrl: objectUrl,
           thumbnailUrl,
           width,
           height,
@@ -89,11 +91,12 @@ export function useImageFile() {
       } catch (err) {
         console.error('file-processing', err);
         setError(t('corruptedFile'));
+        revokeObjectUrl();
       } finally {
         setLoading(false);
       }
     },
-    [t]
+    [revokeObjectUrl, t]
   );
 
   return {

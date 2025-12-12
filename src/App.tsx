@@ -51,7 +51,7 @@ async function loadImageElement(src: string): Promise<HTMLImageElement> {
 }
 
 const blurDefault = 28;
-const PREVIEW_MAX_DIMENSION = 3200;
+const PREVIEW_MAX_DIMENSION = 2400;
 
 const presetConfig: Record<Exclude<PresetKey, 'none'>, {
   removeMetadata: boolean;
@@ -257,9 +257,8 @@ const App: React.FC = () => {
   const createProcessedCanvas = useCallback(
     async (options?: { maxDimension?: number }) => {
       if (!fileInfo) return null;
-      const targetScale = options?.maxDimension
-        ? Math.min(1, options.maxDimension / Math.max(fileInfo.width, fileInfo.height))
-        : 1;
+      const longest = Math.max(fileInfo.width, fileInfo.height) || 1;
+      const targetScale = options?.maxDimension ? Math.min(1, options.maxDimension / longest) : 1;
       const targetWidth = Math.max(1, Math.round(fileInfo.width * targetScale));
       const targetHeight = Math.max(1, Math.round(fileInfo.height * targetScale));
 
@@ -400,7 +399,8 @@ const App: React.FC = () => {
     }
     let cancelled = false;
     setPreviewLoading(true);
-    const previewScale = Math.min(1, PREVIEW_MAX_DIMENSION / Math.max(fileInfo.width, fileInfo.height));
+    const longestSide = Math.max(fileInfo.width, fileInfo.height) || 1;
+    const previewScale = Math.min(1, PREVIEW_MAX_DIMENSION / longestSide);
     createProcessedCanvas({ maxDimension: PREVIEW_MAX_DIMENSION })
       .then((canvas) => {
         if (!canvas || cancelled) {

@@ -179,7 +179,7 @@ export function useImageAnalysis(imageUrl: string | null) {
           console.info('[analysis] image loaded', { width: image.width, height: image.height });
         }
         if (cancelled) return;
-        const scaledForDetection = scaleImage(image, 1800);
+        const scaledForDetection = scaleImage(image, DETECTION_MAX_DIMENSION);
         const handleOcrProgress = (message: { status: string; progress?: number }) => {
           if (cancelled) return;
           const percent = typeof message.progress === 'number' ? Math.round(message.progress * 100) : null;
@@ -191,7 +191,7 @@ export function useImageAnalysis(imageUrl: string | null) {
           );
         };
         const [predictions, ocrResult] = await Promise.all([
-          modelRef.current?.detect
+          modelRef.current?.detect && scaledForDetection.canvas.width > 1 && scaledForDetection.canvas.height > 1
             ? modelRef.current.detect(scaledForDetection.canvas, undefined, 0.2)
             : Promise.resolve([]),
           runOcr(image, {
@@ -260,6 +260,8 @@ type RunOcrOptions = {
 };
 
 type OcrRunResult = { lines: string[]; boxes: BoundingBox[] };
+const DETECTION_MAX_DIMENSION = 1600;
+const OCR_MAX_DIMENSION = 1800;
 
 async function runOcr(image: HTMLImageElement, options: RunOcrOptions): Promise<OcrRunResult | null> {
   const { signal, onProgress, t } = options;
@@ -274,6 +276,9 @@ async function runOcr(image: HTMLImageElement, options: RunOcrOptions): Promise<
     }
     const preprocessed = await preprocessImageForOcr(image, signal);
     if (!preprocessed || signal?.aborted) {
+      return null;
+    }
+    if (preprocessed.canvas.width <= 1 || preprocessed.canvas.height <= 1) {
       return null;
     }
     onProgress?.({ status: 'recognizing text', progress: 0 });
@@ -326,20 +331,29 @@ function mapOcrStatus(status: string, t: ReturnType<typeof useT>): string {
 type ScaledCanvas = { canvas: HTMLCanvasElement; scaleX: number; scaleY: number };
 
 function scaleImage(image: HTMLImageElement | HTMLCanvasElement, maxDimension = 2000): ScaledCanvas {
-  const canvas = document.createElement('canvas');
-  const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
-  const width = Math.max(1, Math.round(image.width * scale));
-  const height = Math.max(1, Math.round(image.height * scale));
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    throw new Error('canvas');
+  try {
+    const canvas = document.createElement('canvas');
+    const maxSourceDimension = Math.max(image.width, image.height) || 1;
+    const scale = Math.min(1, maxDimension / maxSourceDimension);
+    const width = Math.max(1, Math.round(image.width * scale));
+    const height = Math.max(1, Math.round(image.height * scale));
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('canvas');
+    }
+    ctx.drawImage(image as CanvasImageSource, 0, 0, width, height);
+    const scaleX = image.width / width;
+    const scaleY = image.height / height;
+    return { canvas, scaleX, scaleY };
+  } catch (error) {
+    console.warn('scale-image-fallback', error);
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    return { canvas, scaleX: 1, scaleY: 1 };
   }
-  ctx.drawImage(image as CanvasImageSource, 0, 0, width, height);
-  const scaleX = image.width / width;
-  const scaleY = image.height / height;
-  return { canvas, scaleX, scaleY };
 }
 
 async function preprocessImageForOcr(
@@ -347,7 +361,7 @@ async function preprocessImageForOcr(
   signal?: AbortSignal
 ): Promise<(ScaledCanvas & { canvas: HTMLCanvasElement }) | null> {
   if (signal?.aborted) return null;
-  const scaled = scaleImage(image, 2000);
+  const scaled = scaleImage(image, OCR_MAX_DIMENSION);
   const { canvas } = scaled;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
