@@ -85,6 +85,7 @@ const App: React.FC = () => {
   const {
     loading: analysisLoading,
     error: analysisError,
+    ocrStatus,
     detections,
     summary: analysisSummary
   } = useImageAnalysis(fileInfo?.dataUrl ?? null);
@@ -389,7 +390,12 @@ const App: React.FC = () => {
       {fileInfo ? (
         <div className="grid-two-column">
           <div className="panel">
-            <PreviewViewer fileInfo={fileInfo} detections={detections} sceneDescription={sceneDescription} />
+            <PreviewViewer
+              fileInfo={fileInfo}
+              detections={detections}
+              sceneDescription={sceneDescription}
+              statusNote={ocrStatus ?? undefined}
+            />
           </div>
           <MetadataPanel fileInfo={fileInfo} metadata={metadata} />
         </div>

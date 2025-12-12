@@ -16,18 +16,37 @@ async function loadModel() {
 
 type OcrWorker = Awaited<ReturnType<(typeof import('tesseract.js'))['createWorker']>>;
 
-let cachedOcrWorkerPromise: Promise<OcrWorker | null> | null = null;
+const ocrAssetBase = (import.meta.env.VITE_OCR_ASSET_BASE ?? `${import.meta.env.BASE_URL}ocr/`).replace(
+  /\/*$/,
+  '/'
+);
+const ocrEnabled = import.meta.env.VITE_ENABLE_OCR !== 'false';
+const resolveOcrAsset = (fileName: string) => `${ocrAssetBase}${fileName}`;
 
-async function getOcrWorker(signal?: AbortSignal): Promise<OcrWorker | null> {
+let cachedOcrWorkerPromise: Promise<OcrWorker | null> | null = null;
+let ocrProgressListener: ((message: { status: string; progress?: number }) => void) | null = null;
+
+async function getOcrWorker(
+  onProgress?: (message: { status: string; progress?: number }) => void,
+  signal?: AbortSignal
+): Promise<OcrWorker | null> {
   if (signal?.aborted) return null;
+  if (onProgress) {
+    ocrProgressListener = onProgress;
+  }
   if (!cachedOcrWorkerPromise) {
     cachedOcrWorkerPromise = (async () => {
       try {
         const [{ createWorker }] = await Promise.all([import('tesseract.js')]);
         const worker = await createWorker({
-          workerPath: 'https://unpkg.com/tesseract.js@4.1.1/dist/worker.min.js',
-          langPath: 'https://tessdata.projectnaptha.com/4.0.0',
-          corePath: 'https://unpkg.com/tesseract.js-core@4.0.1/tesseract-core.wasm.js'
+          workerPath: resolveOcrAsset('worker.min.js'),
+          langPath: ocrAssetBase,
+          corePath: resolveOcrAsset('tesseract-core.wasm.js'),
+          logger: (message) => {
+            if (message?.status) {
+              ocrProgressListener?.({ status: message.status, progress: message.progress });
+            }
+          }
         });
         await worker.loadLanguage('eng');
         await worker.initialize('eng');
@@ -46,6 +65,7 @@ export function useImageAnalysis(imageUrl: string | null) {
   const t = useT();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ocrStatus, setOcrStatus] = useState<string | null>(null);
   const [detections, setDetections] = useState<BoundingBox[]>([]);
   const [summary, setSummary] = useState<DetectionSummary | null>(null);
   const modelRef = useRef<any | null>(null);
@@ -104,6 +124,7 @@ export function useImageAnalysis(imageUrl: string | null) {
     const detect = async () => {
       setLoading(true);
       setError(null);
+      setOcrStatus(null);
       try {
         if (!modelRef.current) {
           modelRef.current = await loadModel();
@@ -114,10 +135,23 @@ export function useImageAnalysis(imageUrl: string | null) {
           image.onload = resolve;
           image.onerror = () => reject(new Error('image-load'));
         });
+        if (import.meta.env.DEV) {
+          console.info('[analysis] image loaded', { width: image.width, height: image.height });
+        }
         if (cancelled) return;
+        const handleOcrProgress = (message: { status: string; progress?: number }) => {
+          if (cancelled) return;
+          const percent = typeof message.progress === 'number' ? Math.round(message.progress * 100) : null;
+          const statusLabel = mapOcrStatus(message.status, t);
+          setOcrStatus(
+            percent !== null
+              ? t('ocrProgress', { status: statusLabel, progress: percent })
+              : t('ocrWorking', { status: statusLabel })
+          );
+        };
         const [predictions, ocrTexts] = await Promise.all([
           modelRef.current.detect(image, undefined, 0.2),
-          runOcr(imageUrl, abortController.signal)
+          runOcr(image, { signal: abortController.signal, onProgress: handleOcrProgress, t })
         ]);
         if (cancelled) return;
         const boxes: BoundingBox[] = predictions.map((pred: any) => ({
@@ -132,10 +166,12 @@ export function useImageAnalysis(imageUrl: string | null) {
         setDetections(boxes);
         setSummary(summaryValue);
         capabilityCheckedRef.current = true;
+        setOcrStatus(null);
       } catch (err) {
         console.error('analysis', err);
         if (!cancelled) {
           setError(t('contentUnavailable'));
+          setOcrStatus(t('ocrUnavailable'));
           reset();
         }
       } finally {
@@ -156,32 +192,98 @@ export function useImageAnalysis(imageUrl: string | null) {
   return {
     loading,
     error,
+    ocrStatus,
     detections,
     summary
   };
 }
 
-async function runOcr(imageUrl: string, signal?: AbortSignal): Promise<string[]> {
-  if (signal?.aborted) return [];
+type RunOcrOptions = {
+  signal?: AbortSignal;
+  onProgress?: (message: { status: string; progress?: number }) => void;
+  t: ReturnType<typeof useT>;
+};
+
+async function runOcr(image: HTMLImageElement, options: RunOcrOptions): Promise<string[]> {
+  const { signal, onProgress, t } = options;
+  if (signal?.aborted || !ocrEnabled) {
+    return [];
+  }
 
   try {
-    const worker = await getOcrWorker(signal);
+    const worker = await getOcrWorker(onProgress, signal);
     if (!worker || signal?.aborted) {
       return [];
     }
-    const { data } = await worker.recognize(imageUrl);
+    const preprocessed = await preprocessImage(image, signal);
+    if (!preprocessed || signal?.aborted) {
+      return [];
+    }
+    onProgress?.({ status: 'recognizing text', progress: 0 });
+    const { data } = await worker.recognize(preprocessed);
+    onProgress?.({ status: 'recognizing text', progress: 1 });
     if (signal?.aborted) {
       return [];
     }
-    return data.text
+    const lines = data.text
       .split('\n')
       .map((line: string) => line.trim())
       .filter((line: string) => line.length > 0)
       .slice(0, 5);
+    if (lines.length === 0) {
+      onProgress?.({ status: t('ocrNoTextFound') });
+    }
+    return lines;
   } catch (error) {
     console.warn('ocr', error);
+    onProgress?.({ status: t('ocrUnavailable') });
     return [];
   }
+}
+
+function mapOcrStatus(status: string, t: ReturnType<typeof useT>): string {
+  const statusMap: Record<string, string> = {
+    'loading tesseract core': t('ocrStatusLoadingCore'),
+    'initializing tesseract': t('ocrStatusInitializing'),
+    'recognizing text': t('ocrStatusRecognizing')
+  };
+  return statusMap[status] ?? status;
+}
+
+async function preprocessImage(
+  image: HTMLImageElement,
+  signal?: AbortSignal
+): Promise<HTMLCanvasElement | null> {
+  if (signal?.aborted) return null;
+  const canvas = document.createElement('canvas');
+  const maxDimension = 2000;
+  const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+  if (signal?.aborted) return null;
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const { data } = imageData;
+  let sum = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    const gray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+    data[i] = gray;
+    data[i + 1] = gray;
+    data[i + 2] = gray;
+    sum += gray;
+  }
+  const avg = sum / (data.length / 4);
+  const threshold = Math.min(230, Math.max(80, avg + 10));
+  for (let i = 0; i < data.length; i += 4) {
+    const value = data[i] > threshold ? 255 : 0;
+    data[i] = value;
+    data[i + 1] = value;
+    data[i + 2] = value;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return canvas;
 }
 
 function summarizeDetections(detections: BoundingBox[], ocrTexts: string[]): DetectionSummary {

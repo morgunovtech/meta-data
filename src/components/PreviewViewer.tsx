@@ -7,9 +7,15 @@ interface PreviewViewerProps {
   fileInfo: BasicFileInfo;
   detections: BoundingBox[];
   sceneDescription: string;
+  statusNote?: string;
 }
 
-export const PreviewViewer: React.FC<PreviewViewerProps> = ({ fileInfo, detections, sceneDescription }) => {
+export const PreviewViewer: React.FC<PreviewViewerProps> = ({
+  fileInfo,
+  detections,
+  sceneDescription,
+  statusNote
+}) => {
   const t = useT();
   const [fullScreen, setFullScreen] = useState(false);
 
@@ -56,6 +62,11 @@ export const PreviewViewer: React.FC<PreviewViewerProps> = ({ fileInfo, detectio
         <div style={{ position: 'absolute', inset: 0 }}>{overlays}</div>
       </div>
       <p className="preview-description">{sceneDescription}</p>
+      {statusNote ? (
+        <p className="preview-description" aria-live="polite" style={{ color: '#38bdf8' }}>
+          {statusNote}
+        </p>
+      ) : null}
       {fullScreen ? (
         <div className="fullscreen-viewer" onClick={() => setFullScreen(false)}>
           <div className="fullscreen-inner">
