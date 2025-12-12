@@ -202,7 +202,7 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
       minute: '2-digit',
       hour12: false
     };
-    if (localContext.timezone) {
+    if (isValidTimeZone(localContext.timezone)) {
       options.timeZone = localContext.timezone;
     }
     const formatted = new Intl.DateTimeFormat(lang, options).format(date);
@@ -683,6 +683,17 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
     </section>
   );
 };
+
+function isValidTimeZone(timezone?: string): timezone is string {
+  if (!timezone) return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format();
+    return true;
+  } catch (error) {
+    console.warn('invalid-timezone', timezone, error);
+    return false;
+  }
+}
 
 function capitalize(value: string) {
   if (!value) return value;
