@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n';
 import type { BoundingBox, DetectionSummary } from '../types/detection';
+import type { BasicFileInfo } from '../types/metadata';
 
 async function loadModel() {
   const resolved = await Promise.all([
@@ -95,7 +96,7 @@ async function getOcrWorker(
   return cachedOcrWorkerPromise;
 }
 
-export function useImageAnalysis(imageUrl: string | null) {
+export function useImageAnalysis(fileInfo: BasicFileInfo | null) {
   const t = useT();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -113,7 +114,7 @@ export function useImageAnalysis(imageUrl: string | null) {
       setSummary(null);
     };
 
-    if (!imageUrl) {
+    if (!fileInfo) {
       reset();
       setError(null);
       setLoading(false);
@@ -159,6 +160,7 @@ export function useImageAnalysis(imageUrl: string | null) {
       setLoading(true);
       setError(null);
       setOcrStatus(null);
+      let decoded: DecodedSource | null = null;
       try {
         if (import.meta.env.DEV) {
           console.info('[pipeline] analyze:start');
@@ -169,17 +171,22 @@ export function useImageAnalysis(imageUrl: string | null) {
             console.info('[pipeline] analyze:skip-detection (model unavailable)');
           }
         }
-        const image = new Image();
-        image.src = imageUrl;
-        await new Promise((resolve, reject) => {
-          image.onload = resolve;
-          image.onerror = () => reject(new Error('image-load'));
-        });
+        decoded = await decodeForAnalysis(fileInfo);
+        if (!decoded) {
+          throw new Error('analysis-image');
+        }
         if (import.meta.env.DEV) {
-          console.info('[analysis] image loaded', { width: image.width, height: image.height });
+          console.info('[analysis] image ready', {
+            width: decoded.source.width,
+            height: decoded.source.height,
+            original: { width: fileInfo.width, height: fileInfo.height }
+          });
         }
         if (cancelled) return;
-        const scaledForDetection = scaleImage(image, DETECTION_MAX_DIMENSION);
+        const scaledForDetection = scaleImage(decoded.source, DETECTION_MAX_DIMENSION, {
+          width: decoded.baseWidth,
+          height: decoded.baseHeight
+        });
         const handleOcrProgress = (message: { status: string; progress?: number }) => {
           if (cancelled) return;
           const percent = typeof message.progress === 'number' ? Math.round(message.progress * 100) : null;
@@ -194,9 +201,10 @@ export function useImageAnalysis(imageUrl: string | null) {
           modelRef.current?.detect && scaledForDetection.canvas.width > 1 && scaledForDetection.canvas.height > 1
             ? modelRef.current.detect(scaledForDetection.canvas, undefined, 0.2)
             : Promise.resolve([]),
-          runOcr(image, {
+          runOcr(decoded.source, {
             signal: abortController.signal,
             onProgress: handleOcrProgress,
+            baseDimensions: { width: decoded.baseWidth, height: decoded.baseHeight },
             t
           })
         ]);
@@ -230,6 +238,7 @@ export function useImageAnalysis(imageUrl: string | null) {
           reset();
         }
       } finally {
+        decoded?.cleanup?.();
         if (!cancelled) {
           setLoading(false);
         }
@@ -242,7 +251,7 @@ export function useImageAnalysis(imageUrl: string | null) {
       cancelled = true;
       abortController.abort();
     };
-  }, [imageUrl, t]);
+  }, [fileInfo, t]);
 
   return {
     loading,
@@ -256,14 +265,69 @@ export function useImageAnalysis(imageUrl: string | null) {
 type RunOcrOptions = {
   signal?: AbortSignal;
   onProgress?: (message: { status: string; progress?: number }) => void;
+  baseDimensions?: { width: number; height: number };
   t: ReturnType<typeof useT>;
 };
 
 type OcrRunResult = { lines: string[]; boxes: BoundingBox[] };
+type CanvasSource = CanvasImageSource & { width: number; height: number };
 const DETECTION_MAX_DIMENSION = 1600;
 const OCR_MAX_DIMENSION = 1800;
+const DECODE_MAX_DIMENSION = Math.max(DETECTION_MAX_DIMENSION, OCR_MAX_DIMENSION);
 
-async function runOcr(image: HTMLImageElement, options: RunOcrOptions): Promise<OcrRunResult | null> {
+type DecodedSource = {
+  source: CanvasSource;
+  baseWidth: number;
+  baseHeight: number;
+  cleanup?: () => void;
+};
+
+async function decodeForAnalysis(fileInfo: BasicFileInfo): Promise<DecodedSource | null> {
+  const longestSide = Math.max(fileInfo.width, fileInfo.height) || 1;
+  const targetScale = Math.min(1, DECODE_MAX_DIMENSION / longestSide);
+  const targetWidth = Math.max(1, Math.round(fileInfo.width * targetScale));
+  const targetHeight = Math.max(1, Math.round(fileInfo.height * targetScale));
+
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bitmap = await createImageBitmap(fileInfo.file, {
+        resizeWidth: targetWidth,
+        resizeHeight: targetHeight,
+        resizeQuality: 'high'
+      });
+      const cleanup = () => {
+        if (typeof (bitmap as ImageBitmap).close === 'function') {
+          (bitmap as ImageBitmap).close();
+        }
+      };
+      return {
+        source: bitmap as CanvasSource,
+        baseWidth: fileInfo.width,
+        baseHeight: fileInfo.height,
+        cleanup
+      };
+    } catch (error) {
+      console.warn('bitmap-decode', error);
+    }
+  }
+
+  const image = new Image();
+  image.decoding = 'async';
+  image.loading = 'eager';
+  image.src = fileInfo.dataUrl;
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve();
+    image.onerror = () => reject(new Error('image-load'));
+  });
+
+  return {
+    source: image as CanvasSource,
+    baseWidth: fileInfo.width,
+    baseHeight: fileInfo.height
+  };
+}
+
+async function runOcr(image: CanvasSource, options: RunOcrOptions): Promise<OcrRunResult | null> {
   const { signal, onProgress, t } = options;
   if (signal?.aborted || !ocrEnabled) {
     return null;
@@ -274,7 +338,7 @@ async function runOcr(image: HTMLImageElement, options: RunOcrOptions): Promise<
     if (!worker || signal?.aborted) {
       return null;
     }
-    const preprocessed = await preprocessImageForOcr(image, signal);
+    const preprocessed = await preprocessImageForOcr(image, signal, options.baseDimensions);
     if (!preprocessed || signal?.aborted) {
       return null;
     }
@@ -330,7 +394,11 @@ function mapOcrStatus(status: string, t: ReturnType<typeof useT>): string {
 
 type ScaledCanvas = { canvas: HTMLCanvasElement; scaleX: number; scaleY: number };
 
-function scaleImage(image: HTMLImageElement | HTMLCanvasElement, maxDimension = 2000): ScaledCanvas {
+function scaleImage(
+  image: CanvasSource,
+  maxDimension = 2000,
+  base?: { width: number; height: number }
+): ScaledCanvas {
   try {
     const canvas = document.createElement('canvas');
     const maxSourceDimension = Math.max(image.width, image.height) || 1;
@@ -344,8 +412,8 @@ function scaleImage(image: HTMLImageElement | HTMLCanvasElement, maxDimension = 
       throw new Error('canvas');
     }
     ctx.drawImage(image as CanvasImageSource, 0, 0, width, height);
-    const scaleX = image.width / width;
-    const scaleY = image.height / height;
+    const scaleX = (base?.width ?? image.width) / width;
+    const scaleY = (base?.height ?? image.height) / height;
     return { canvas, scaleX, scaleY };
   } catch (error) {
     console.warn('scale-image-fallback', error);
@@ -357,11 +425,12 @@ function scaleImage(image: HTMLImageElement | HTMLCanvasElement, maxDimension = 
 }
 
 async function preprocessImageForOcr(
-  image: HTMLImageElement,
-  signal?: AbortSignal
+  image: CanvasSource,
+  signal?: AbortSignal,
+  base?: { width: number; height: number }
 ): Promise<(ScaledCanvas & { canvas: HTMLCanvasElement }) | null> {
   if (signal?.aborted) return null;
-  const scaled = scaleImage(image, OCR_MAX_DIMENSION);
+  const scaled = scaleImage(image, OCR_MAX_DIMENSION, base);
   const { canvas } = scaled;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;

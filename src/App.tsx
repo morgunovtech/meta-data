@@ -159,7 +159,7 @@ const App: React.FC = () => {
     ocrStatus,
     detections,
     summary: analysisSummary
-  } = useImageAnalysis(fileInfo?.dataUrl ?? null);
+  } = useImageAnalysis(fileInfo);
 
   type NoticeState = { type: 'success' | 'error'; message: string };
 
