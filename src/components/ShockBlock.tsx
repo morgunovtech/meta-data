@@ -182,7 +182,10 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
   const software = useMemo(() => extractSoftware(metadata), [metadata]);
   const cameraPosition = useMemo(() => inferCameraPosition(metadata), [metadata]);
   const movement = useMemo(() => inferMovement(metadata), [metadata]);
-  const localContext = useMemo(() => resolveLocalTime(metadata, timezoneFetch.data ?? null), [metadata, timezoneFetch.data]);
+  const localContext = useMemo(
+    () => resolveLocalTime(metadata, timezoneFetch.data ?? null, coords),
+    [coords, metadata, timezoneFetch.data]
+  );
   const weatherSummary = useMemo(() => summarizeWeather(weatherFetch.data ?? null), [weatherFetch.data]);
 
   const localTimeDetails = useMemo(() => {
@@ -393,7 +396,11 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
     }
 
     if (localTimeDetails) {
-      const timezoneLabel = localTimeDetails.timezone ?? t('insightTimeTimezoneUnknown');
+      const timezoneLabel = localTimeDetails.timezone
+        ? localContext.timezoneSource === 'approx'
+          ? t('insightTimeTimezoneApprox', { timezone: localTimeDetails.timezone })
+          : localTimeDetails.timezone
+        : t('insightTimeTimezoneUnknown');
       const periodLabel = timePeriodLabel ?? t('dayPeriod_unknown');
       const holidayText = localContext.holidayName
         ? t('insightTimeHoliday', { holiday: localContext.holidayName })

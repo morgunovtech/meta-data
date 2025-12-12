@@ -16,12 +16,34 @@ async function loadModel() {
 
 type OcrWorker = Awaited<ReturnType<(typeof import('tesseract.js'))['createWorker']>>;
 
+type OcrSource = {
+  label: string;
+  workerPath: string;
+  corePath: string;
+  langPath: string;
+};
+
 const ocrAssetBase = (import.meta.env.VITE_OCR_ASSET_BASE ?? `${import.meta.env.BASE_URL}ocr/`).replace(
   /\/*$/,
   '/'
 );
 const ocrEnabled = import.meta.env.VITE_ENABLE_OCR !== 'false';
 const resolveOcrAsset = (fileName: string) => `${ocrAssetBase}${fileName}`;
+
+const ocrSources: OcrSource[] = [
+  {
+    label: 'local',
+    workerPath: resolveOcrAsset('worker.min.js'),
+    corePath: resolveOcrAsset('tesseract-core.wasm.js'),
+    langPath: ocrAssetBase
+  },
+  {
+    label: 'cdn',
+    workerPath: 'https://unpkg.com/tesseract.js@4.1.1/dist/worker.min.js',
+    corePath: 'https://unpkg.com/tesseract.js-core@5.0.1/tesseract-core.wasm.js',
+    langPath: 'https://tessdata.projectnaptha.com/4.0.0_fast/'
+  }
+];
 
 let cachedOcrWorkerPromise: Promise<OcrWorker | null> | null = null;
 let ocrProgressListener: ((message: { status: string; progress?: number }) => void) | null = null;
@@ -36,26 +58,31 @@ async function getOcrWorker(
   }
   if (!cachedOcrWorkerPromise) {
     cachedOcrWorkerPromise = (async () => {
-      try {
-        const [{ createWorker }] = await Promise.all([import('tesseract.js')]);
-        const worker = await createWorker({
-          workerPath: resolveOcrAsset('worker.min.js'),
-          langPath: ocrAssetBase,
-          corePath: resolveOcrAsset('tesseract-core.wasm.js'),
-          logger: (message) => {
-            if (message?.status) {
-              ocrProgressListener?.({ status: message.status, progress: message.progress });
+      const [{ createWorker }] = await Promise.all([import('tesseract.js')]);
+      for (const source of ocrSources) {
+        try {
+          const worker = await createWorker({
+            workerPath: source.workerPath,
+            langPath: source.langPath,
+            corePath: source.corePath,
+            logger: (message) => {
+              if (message?.status) {
+                ocrProgressListener?.({ status: message.status, progress: message.progress });
+              }
             }
+          });
+          await worker.loadLanguage('eng');
+          await worker.initialize('eng');
+          if (import.meta.env.DEV) {
+            console.info('[ocr] ready via', source.label);
           }
-        });
-        await worker.loadLanguage('eng');
-        await worker.initialize('eng');
-        return worker;
-      } catch (error) {
-        console.warn('ocr-init', error);
-        cachedOcrWorkerPromise = null;
-        return null;
+          return worker;
+        } catch (error) {
+          console.warn('ocr-init', source.label, error);
+        }
       }
+      cachedOcrWorkerPromise = null;
+      return null;
     })();
   }
   return cachedOcrWorkerPromise;
@@ -149,7 +176,7 @@ export function useImageAnalysis(imageUrl: string | null) {
               : t('ocrWorking', { status: statusLabel })
           );
         };
-        const [predictions, ocrTexts] = await Promise.all([
+        const [predictions, ocrResult] = await Promise.all([
           modelRef.current.detect(image, undefined, 0.2),
           runOcr(image, { signal: abortController.signal, onProgress: handleOcrProgress, t })
         ]);
@@ -162,8 +189,9 @@ export function useImageAnalysis(imageUrl: string | null) {
           score: pred.score,
           label: pred.class
         }));
-        const summaryValue = summarizeDetections(boxes, ocrTexts);
-        setDetections(boxes);
+        const ocrBoxes = ocrResult?.boxes ?? [];
+        const summaryValue = summarizeDetections([...boxes, ...ocrBoxes], ocrResult?.lines ?? []);
+        setDetections([...boxes, ...ocrBoxes]);
         setSummary(summaryValue);
         capabilityCheckedRef.current = true;
         setOcrStatus(null);
@@ -204,40 +232,58 @@ type RunOcrOptions = {
   t: ReturnType<typeof useT>;
 };
 
-async function runOcr(image: HTMLImageElement, options: RunOcrOptions): Promise<string[]> {
+type OcrRunResult = { lines: string[]; boxes: BoundingBox[] };
+
+async function runOcr(image: HTMLImageElement, options: RunOcrOptions): Promise<OcrRunResult | null> {
   const { signal, onProgress, t } = options;
   if (signal?.aborted || !ocrEnabled) {
-    return [];
+    return null;
   }
 
   try {
     const worker = await getOcrWorker(onProgress, signal);
     if (!worker || signal?.aborted) {
-      return [];
+      return null;
     }
     const preprocessed = await preprocessImage(image, signal);
     if (!preprocessed || signal?.aborted) {
-      return [];
+      return null;
     }
     onProgress?.({ status: 'recognizing text', progress: 0 });
     const { data } = await worker.recognize(preprocessed);
     onProgress?.({ status: 'recognizing text', progress: 1 });
     if (signal?.aborted) {
-      return [];
+      return null;
     }
     const lines = data.text
       .split('\n')
       .map((line: string) => line.trim())
       .filter((line: string) => line.length > 0)
       .slice(0, 5);
+    const boxes: BoundingBox[] = (data.words ?? [])
+      .filter((word) => word?.text?.trim())
+      .map((word) => {
+        const { bbox } = word;
+        const width = Math.max(1, bbox.x1 - bbox.x0);
+        const height = Math.max(1, bbox.y1 - bbox.y0);
+        return {
+          x: bbox.x0,
+          y: bbox.y0,
+          width,
+          height,
+          score: typeof word.confidence === 'number' ? word.confidence / 100 : 0.5,
+          label: `text: ${word.text}`
+        } satisfies BoundingBox;
+      })
+      .slice(0, 10);
     if (lines.length === 0) {
       onProgress?.({ status: t('ocrNoTextFound') });
     }
-    return lines;
+    return { lines, boxes };
   } catch (error) {
     console.warn('ocr', error);
     onProgress?.({ status: t('ocrUnavailable') });
-    return [];
+    return null;
   }
 }
 
@@ -296,6 +342,7 @@ function summarizeDetections(detections: BoundingBox[], ocrTexts: string[]): Det
 
   detections.forEach((d) => {
     if (d.score < 0.5) return;
+    if (d.label.startsWith('text')) return;
     if (d.label === 'person') people += 1;
     if (vehiclesSet.has(d.label)) vehicles += 1;
     if (animalsSet.has(d.label)) animals += 1;

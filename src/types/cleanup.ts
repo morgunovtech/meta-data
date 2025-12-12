@@ -31,3 +31,12 @@ export interface CleanupPreviewDimensions {
   width: number;
   height: number;
 }
+
+export type PresetKey = 'none' | 'social' | 'work' | 'proof' | 'personal';
+
+export type PrivacyCategory = 'location' | 'time' | 'identification' | 'device' | 'search';
+
+export interface PrivacyScores {
+  overall: number;
+  categories: Array<{ id: PrivacyCategory; score: number }>;
+}

@@ -12,7 +12,15 @@ import { useImageAnalysis } from './hooks/useImageAnalysis';
 import type { ManualCoordinates } from './types/metadata';
 import { useT } from './i18n';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
-import type { AntiSearchParams, CleanupPreviewDimensions, ManualMask, PrivacyLevel, QualityMode } from './types/cleanup';
+import type {
+  AntiSearchParams,
+  CleanupPreviewDimensions,
+  ManualMask,
+  PresetKey,
+  PrivacyLevel,
+  PrivacyScores,
+  QualityMode
+} from './types/cleanup';
 import {
   applyAntiSearch,
   applyColorReduction,
@@ -44,6 +52,63 @@ async function loadImageElement(src: string): Promise<HTMLImageElement> {
 
 const blurDefault = 28;
 
+const presetConfig: Record<Exclude<PresetKey, 'none'>, {
+  removeMetadata: boolean;
+  blurFaces: boolean;
+  antiSearchEnabled: boolean;
+  antiSearchLevel: number;
+  reduceColor: boolean;
+  watermark: boolean;
+  prnuCleanup: boolean;
+  qualityMode: QualityMode;
+  renameFile: boolean;
+}> = {
+  social: {
+    removeMetadata: true,
+    blurFaces: true,
+    antiSearchEnabled: true,
+    antiSearchLevel: 2,
+    reduceColor: false,
+    watermark: true,
+    prnuCleanup: true,
+    qualityMode: 'medium',
+    renameFile: true
+  },
+  work: {
+    removeMetadata: true,
+    blurFaces: false,
+    antiSearchEnabled: true,
+    antiSearchLevel: 1,
+    reduceColor: false,
+    watermark: false,
+    prnuCleanup: false,
+    qualityMode: 'medium',
+    renameFile: true
+  },
+  proof: {
+    removeMetadata: true,
+    blurFaces: false,
+    antiSearchEnabled: false,
+    antiSearchLevel: 1,
+    reduceColor: false,
+    watermark: false,
+    prnuCleanup: false,
+    qualityMode: 'original',
+    renameFile: false
+  },
+  personal: {
+    removeMetadata: true,
+    blurFaces: true,
+    antiSearchEnabled: true,
+    antiSearchLevel: 2,
+    reduceColor: false,
+    watermark: false,
+    prnuCleanup: true,
+    qualityMode: 'medium',
+    renameFile: true
+  }
+};
+
 function qualityForMode(mode: QualityMode): number {
   switch (mode) {
     case 'low':
@@ -62,10 +127,10 @@ function createAnonymisedName(extension: string): string {
 }
 
 function computePrivacyLevel(score: number): PrivacyLevel {
-  if (score >= 6) {
+  if (score >= 75) {
     return 'high';
   }
-  if (score >= 3) {
+  if (score >= 45) {
     return 'medium';
   }
   return 'low';
@@ -76,6 +141,11 @@ function estimateDataUrlBytes(dataUrl: string): number {
   if (!base64) return 0;
   const padding = (base64.match(/=+$/)?.[0].length ?? 0);
   return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
+}
+
+function scoreFromRisk(risk: number): number {
+  const bounded = Math.min(1, Math.max(0, risk));
+  return Math.round((1 - bounded) * 100);
 }
 
 const App: React.FC = () => {
@@ -101,10 +171,12 @@ const App: React.FC = () => {
   const [manualMaskMode, setManualMaskMode] = useState(false);
   const [manualMasks, setManualMasks] = useState<ManualMask[]>([]);
   const [antiSearchEnabled, setAntiSearchEnabled] = useState(false);
+  const [antiSearchLevel, setAntiSearchLevel] = useState(2);
   const [antiSearchParams, setAntiSearchParams] = useState<AntiSearchParams | null>(null);
   const [reduceColor, setReduceColor] = useState(false);
   const [watermark, setWatermark] = useState(false);
   const [prnuCleanup, setPrnuCleanup] = useState(false);
+  const [preset, setPreset] = useState<PresetKey>('none');
   const [processing, setProcessing] = useState(false);
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
@@ -119,11 +191,40 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (antiSearchEnabled) {
-      setAntiSearchParams(generateAntiSearchParams({ level: 3 }));
+      setAntiSearchParams(generateAntiSearchParams({ level: antiSearchLevel }));
     } else {
       setAntiSearchParams(null);
     }
-  }, [antiSearchEnabled]);
+  }, [antiSearchEnabled, antiSearchLevel]);
+
+  useEffect(() => {
+    if (preset === 'none') return;
+    const config = presetConfig[preset];
+    if (
+      config.removeMetadata !== removeMetadata ||
+      config.blurFaces !== blurFaces ||
+      config.antiSearchEnabled !== antiSearchEnabled ||
+      config.antiSearchLevel !== antiSearchLevel ||
+      config.reduceColor !== reduceColor ||
+      config.watermark !== watermark ||
+      config.prnuCleanup !== prnuCleanup ||
+      config.qualityMode !== qualityMode ||
+      config.renameFile !== renameFile
+    ) {
+      setPreset('none');
+    }
+  }, [
+    antiSearchEnabled,
+    antiSearchLevel,
+    blurFaces,
+    preset,
+    prnuCleanup,
+    qualityMode,
+    reduceColor,
+    removeMetadata,
+    renameFile,
+    watermark
+  ]);
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -141,9 +242,11 @@ const App: React.FC = () => {
       setManualMaskMode(false);
       setAntiSearchEnabled(false);
       setAntiSearchParams(null);
+      setAntiSearchLevel(2);
       setReduceColor(false);
       setWatermark(false);
       setPrnuCleanup(false);
+      setPreset('none');
       setPreviewDimensions(null);
       await processFile(file);
     },
@@ -320,33 +423,97 @@ const App: React.FC = () => {
     setManualMasks((current) => current.filter((mask) => mask.id !== id));
   }, []);
 
+  const applyPreset = useCallback(
+    (key: PresetKey) => {
+      setPreset(key);
+      if (key === 'none') return;
+      const config = presetConfig[key];
+      setRemoveMetadata(config.removeMetadata);
+      setBlurFaces(config.blurFaces);
+      setAntiSearchEnabled(config.antiSearchEnabled);
+      setAntiSearchLevel(config.antiSearchLevel);
+      setReduceColor(config.reduceColor);
+      setWatermark(config.watermark);
+      setPrnuCleanup(config.prnuCleanup);
+      setQualityMode(config.qualityMode);
+      setRenameFile(config.renameFile);
+    },
+    []
+  );
 
-  const privacyScore = useMemo(() => {
-    let score = 0;
-    if (removeMetadata) score += 2;
-    if (blurFaces && personDetections.length > 0) score += 2;
-    if (manualMasks.length > 0) score += 2;
-    if (antiSearchEnabled) score += 3;
-    if (renameFile) score += 1;
-    if (reduceColor) score += 1;
-    if (watermark) score += 0.5;
-    if (prnuCleanup) score += 1.5;
-    if (qualityMode !== 'original') score += 1;
-    return score;
+  const applySafetyRecommendations = useCallback(() => {
+    setPreset('none');
+    setRemoveMetadata(true);
+    setRenameFile(true);
+    if (personDetections.length > 0) {
+      setBlurFaces(true);
+    }
+    setAntiSearchEnabled(true);
+    setAntiSearchLevel((current) => Math.max(2, current));
+    setPrnuCleanup(true);
+  }, [personDetections.length]);
+
+
+  const privacyScores = useMemo<PrivacyScores>(() => {
+    const hasGps = Boolean(metadata?.gps);
+    const hasTime = Boolean(metadata?.shotDate);
+    const hasFaces = personDetections.length > 0;
+    const hasText = Boolean(analysisSummary?.ocrTexts && analysisSummary.ocrTexts.length > 0);
+    const hasDevice = Boolean(metadata?.cameraMake || metadata?.cameraModel || metadata?.lensModel || metadata?.software);
+
+    const locationRisk = hasGps ? 0.7 : 0.2;
+    const timeRisk = hasTime ? 0.45 : 0.15;
+    const idRisk = hasFaces || hasText ? 0.65 : 0.25;
+    const deviceRisk = hasDevice ? 0.55 : 0.2;
+    const searchRisk = 0.5;
+
+    const categories = [
+      {
+        id: 'location' as const,
+        score: scoreFromRisk(locationRisk * (removeMetadata ? 0.35 : 1))
+      },
+      {
+        id: 'time' as const,
+        score: scoreFromRisk(timeRisk * (removeMetadata ? 0.4 : 1))
+      },
+      {
+        id: 'identification' as const,
+        score: scoreFromRisk(
+          idRisk * (blurFaces || manualMasks.length > 0 ? 0.35 : 1) * (antiSearchEnabled ? 0.8 : 1)
+        )
+      },
+      {
+        id: 'device' as const,
+        score: scoreFromRisk(deviceRisk * (removeMetadata ? 0.45 : 1) * (renameFile ? 0.8 : 1))
+      },
+      {
+        id: 'search' as const,
+        score: scoreFromRisk(searchRisk * (antiSearchEnabled ? 0.35 : 1) * (prnuCleanup ? 0.85 : 1))
+      }
+    ];
+
+    const overall = Math.round(
+      categories.reduce((acc, item) => acc + item.score, 0) / (categories.length || 1)
+    );
+
+    return { overall, categories };
   }, [
-    removeMetadata,
-    blurFaces,
-    personDetections.length,
-    manualMasks.length,
+    analysisSummary?.ocrTexts,
     antiSearchEnabled,
-    renameFile,
-    reduceColor,
-    watermark,
+    manualMasks.length,
+    metadata?.cameraMake,
+    metadata?.cameraModel,
+    metadata?.gps,
+    metadata?.lensModel,
+    metadata?.software,
+    metadata?.shotDate,
+    personDetections.length,
     prnuCleanup,
-    qualityMode
+    removeMetadata,
+    renameFile
   ]);
 
-  const privacyLevel = useMemo(() => computePrivacyLevel(privacyScore), [privacyScore]);
+  const privacyLevel = useMemo(() => computePrivacyLevel(privacyScores.overall), [privacyScores.overall]);
 
   const sceneDescription = useMemo(() => {
     if (!analysisSummary) {
@@ -434,9 +601,15 @@ const App: React.FC = () => {
         onManualMaskAdd={handleManualMaskAdd}
         onManualMaskRemove={handleManualMaskRemove}
         setAntiSearchEnabled={setAntiSearchEnabled}
+        antiSearchLevel={antiSearchLevel}
+        setAntiSearchLevel={setAntiSearchLevel}
         setReduceColor={setReduceColor}
         setWatermark={setWatermark}
         setPrnuCleanup={setPrnuCleanup}
+        preset={preset}
+        onPresetChange={applyPreset}
+        privacyScores={privacyScores}
+        onApplyRecommendation={applySafetyRecommendations}
         onClean={handleDownload}
         processing={processing}
         previewDataUrl={previewDataUrl}
