@@ -3,7 +3,7 @@ import { useT } from '../i18n';
 import type { BasicFileInfo } from '../types/metadata';
 
 const MAX_SIZE_BYTES = 20 * 1024 * 1024;
-const SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif', 'image/bmp'];
 
 async function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

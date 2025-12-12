@@ -71,7 +71,7 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
     return null;
   }, [manualCoords, metadata?.gps?.lat, metadata?.gps?.lon]);
 
-  const timestamp = metadata?.shotDate ?? null;
+  const timestamp = useMemo(() => metadata?.shotDate ?? new Date().toISOString(), [metadata?.shotDate]);
 
   useEffect(() => {
     let cancelled = false;
