@@ -165,6 +165,17 @@ button {
   font-size: 0.95rem;
 }
 
+.info-panel__jobs {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.info-panel__list--compact {
+  gap: 0.3rem;
+  color: var(--color-text);
+  font-size: 0.9rem;
+}
+
 .grid-two-column {
   display: grid;
   gap: 1.25rem;
@@ -181,6 +192,11 @@ button {
   font-size: clamp(1.2rem, 2vw, 1.6rem);
   font-weight: 600;
   color: var(--color-text);
+}
+
+.section-title--small {
+  font-size: 1rem;
+  color: var(--color-text-muted);
 }
 
 .segmented-control {

@@ -51,6 +51,7 @@ async function loadImageElement(src: string): Promise<HTMLImageElement> {
 }
 
 const blurDefault = 28;
+const PREVIEW_MAX_DIMENSION = 3200;
 
 const presetConfig: Record<Exclude<PresetKey, 'none'>, {
   removeMetadata: boolean;
@@ -253,57 +254,83 @@ const App: React.FC = () => {
     [processFile]
   );
 
-  const createProcessedCanvas = useCallback(async () => {
-    if (!fileInfo) return null;
-    const image = await loadImageElement(fileInfo.dataUrl);
-    const baseCanvas = document.createElement('canvas');
-    baseCanvas.width = fileInfo.width;
-    baseCanvas.height = fileInfo.height;
-    const ctx = baseCanvas.getContext('2d');
-    if (!ctx) {
-      throw new Error('canvas');
-    }
-    ctx.drawImage(image, 0, 0, baseCanvas.width, baseCanvas.height);
+  const createProcessedCanvas = useCallback(
+    async (options?: { maxDimension?: number }) => {
+      if (!fileInfo) return null;
+      const targetScale = options?.maxDimension
+        ? Math.min(1, options.maxDimension / Math.max(fileInfo.width, fileInfo.height))
+        : 1;
+      const targetWidth = Math.max(1, Math.round(fileInfo.width * targetScale));
+      const targetHeight = Math.max(1, Math.round(fileInfo.height * targetScale));
 
-    if (blurFaces && personDetections.length > 0) {
-      blurDetections(ctx, image, personDetections, blurStrength);
-    }
+      const image = await loadImageElement(fileInfo.dataUrl);
+      const baseCanvas = document.createElement('canvas');
+      baseCanvas.width = targetWidth;
+      baseCanvas.height = targetHeight;
+      const ctx = baseCanvas.getContext('2d');
+      if (!ctx) {
+        throw new Error('canvas');
+      }
+      ctx.drawImage(image, 0, 0, targetWidth, targetHeight);
 
-    if (manualMasks.length > 0) {
-      blurManualMasks(ctx, image, manualMasks, blurStrength);
-    }
+      const scaledDetections = personDetections.map((det) => ({
+        ...det,
+        x: det.x * targetScale,
+        y: det.y * targetScale,
+        width: det.width * targetScale,
+        height: det.height * targetScale
+      }));
 
-    let workingCanvas = baseCanvas;
+      const scaledMasks = manualMasks.map((mask) => ({
+        ...mask,
+        x: mask.x * targetScale,
+        y: mask.y * targetScale,
+        width: mask.width * targetScale,
+        height: mask.height * targetScale
+      }));
 
-    if (prnuCleanup) {
-      workingCanvas = applyPrnuCleanup(workingCanvas);
-    }
+      if (blurFaces && scaledDetections.length > 0) {
+        blurDetections(ctx, baseCanvas, scaledDetections, blurStrength);
+      }
 
-    if (antiSearchEnabled && antiSearchParams) {
-      workingCanvas = applyAntiSearch(workingCanvas, antiSearchParams);
-    }
+      if (scaledMasks.length > 0) {
+        blurManualMasks(ctx, baseCanvas, scaledMasks, blurStrength);
+      }
 
-    if (reduceColor) {
-      workingCanvas = applyColorReduction(workingCanvas);
-    }
+      let workingCanvas = baseCanvas;
 
-    if (watermark) {
-      workingCanvas = applyWatermark(workingCanvas, t('watermarkText'));
-    }
+      if (prnuCleanup) {
+        workingCanvas = applyPrnuCleanup(workingCanvas);
+      }
 
-    return workingCanvas;
-  }, [
-    fileInfo,
-    blurFaces,
-    personDetections,
-    blurStrength,
-    manualMasks,
-    antiSearchEnabled,
-    antiSearchParams,
-    reduceColor,
-    watermark,
-    t
-  ]);
+      if (antiSearchEnabled && antiSearchParams) {
+        workingCanvas = applyAntiSearch(workingCanvas, antiSearchParams);
+      }
+
+      if (reduceColor) {
+        workingCanvas = applyColorReduction(workingCanvas);
+      }
+
+      if (watermark) {
+        workingCanvas = applyWatermark(workingCanvas, t('watermarkText'));
+      }
+
+      return workingCanvas;
+    },
+    [
+      fileInfo,
+      blurFaces,
+      personDetections,
+      blurStrength,
+      manualMasks,
+      antiSearchEnabled,
+      antiSearchParams,
+      reduceColor,
+      watermark,
+      prnuCleanup,
+      t
+    ]
+  );
 
   const handleDownload = useCallback(async () => {
     if (!fileInfo) {
@@ -373,7 +400,8 @@ const App: React.FC = () => {
     }
     let cancelled = false;
     setPreviewLoading(true);
-    createProcessedCanvas()
+    const previewScale = Math.min(1, PREVIEW_MAX_DIMENSION / Math.max(fileInfo.width, fileInfo.height));
+    createProcessedCanvas({ maxDimension: PREVIEW_MAX_DIMENSION })
       .then((canvas) => {
         if (!canvas || cancelled) {
           return;
@@ -384,7 +412,10 @@ const App: React.FC = () => {
         if (!cancelled) {
           setPreviewDataUrl(dataUrl);
           setEstimatedSize(estimateDataUrlBytes(dataUrl));
-          setPreviewDimensions({ width: canvas.width, height: canvas.height });
+          setPreviewDimensions({
+            width: Math.round(canvas.width / previewScale),
+            height: Math.round(canvas.height / previewScale)
+          });
         }
       })
       .catch((err) => {
