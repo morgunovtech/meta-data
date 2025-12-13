@@ -101,7 +101,11 @@ export function useImageFile() {
         }
       } catch (err) {
         console.error('file-processing', err);
-        setError(t('corruptedFile'));
+        if (file.type === 'image/avif' || file.type === 'image/heic' || file.type === 'image/heif') {
+          setError(t('browserFormatUnsupported'));
+        } else {
+          setError(t('corruptedFile'));
+        }
         revokeObjectUrl();
       } finally {
         setLoading(false);

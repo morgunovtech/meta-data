@@ -321,6 +321,14 @@ button {
   background: rgba(56, 189, 248, 0.12);
 }
 
+.drop-zone__label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+}
+
 .drop-zone__hint {
   margin: 0;
   color: var(--color-text);
@@ -333,6 +341,12 @@ button {
   font-size: 0.95rem;
 }
 
+.drop-zone__support {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
 .drop-zone__file {
   position: absolute;
   inset: 0;
@@ -340,6 +354,7 @@ button {
   height: 100%;
   opacity: 0;
   cursor: pointer;
+  z-index: 2;
 }
 
 .preview-wrapper {
@@ -378,6 +393,28 @@ button {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0.75rem;
+}
+
+.metadata-notes {
+  margin-top: 1rem;
+  background: var(--color-muted-bg);
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.metadata-notes__title {
+  margin: 0 0 0.25rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.metadata-notes ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--color-text-muted);
+  display: grid;
+  gap: 0.2rem;
 }
 
 .metadata-item {

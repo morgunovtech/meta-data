@@ -59,21 +59,25 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ loading, onFile, error }
         onDragOver={(event) => event.preventDefault()}
         onDrop={handleDrop}
       >
-        <button
-          type="button"
-          className="button button--primary"
-          onClick={() => inputRef.current?.click()}
-          disabled={loading}
-        >
-          {loading ? '…' : t('uploadButton')}
-        </button>
-        <p className="drop-zone__hint">{t('orDrop')}</p>
-        <p className="drop-zone__subhint">{t('uploadFormats')}</p>
+        <label className="drop-zone__label" htmlFor="upload-input">
+          <span className="sr-only">{t('uploadTitle')}</span>
+          <button
+            type="button"
+            className="button button--primary"
+            onClick={() => inputRef.current?.click()}
+            disabled={loading}
+          >
+            {loading ? '…' : t('uploadButton')}
+          </button>
+          <p className="drop-zone__hint">{t('orDrop')}</p>
+          <p className="drop-zone__subhint">{t('uploadFormats')}</p>
+          <p className="drop-zone__support">{t('uploadFormatsSupport')}</p>
+        </label>
         <input
           id="upload-input"
           ref={inputRef}
           type="file"
-          accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/bmp"
+          accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/bmp,image/heic,image/heif"
           className="drop-zone__file"
           aria-label={t('uploadButton')}
           onChange={(event) => handleFiles(event.target.files)}

@@ -10,7 +10,7 @@ import { ShockBlock } from './components/ShockBlock';
 import { CleanupDownloadBlock } from './components/CleanupDownloadBlock';
 import { useImageAnalysis } from './hooks/useImageAnalysis';
 import type { ManualCoordinates } from './types/metadata';
-import { useT } from './i18n';
+import { useI18n, useT } from './i18n';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
 import type {
   AntiSearchParams,
@@ -52,6 +52,8 @@ async function loadImageElement(src: string): Promise<HTMLImageElement> {
 
 const blurDefault = 28;
 const PREVIEW_MAX_DIMENSION = 2400;
+
+const RU_PLURAL_RANGE = { few: [2, 3, 4], many: [0, 5, 6, 7, 8, 9] };
 
 const presetConfig: Record<Exclude<PresetKey, 'none'>, {
   removeMetadata: boolean;
@@ -151,6 +153,7 @@ function scoreFromRisk(risk: number): number {
 
 const App: React.FC = () => {
   const t = useT();
+  const { lang } = useI18n();
   const { fileInfo, error, loading, processFile } = useImageFile();
   const { metadata } = useExifMetadata(fileInfo);
   const {
@@ -184,6 +187,30 @@ const App: React.FC = () => {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [estimatedSize, setEstimatedSize] = useState<number | null>(null);
   const [previewDimensions, setPreviewDimensions] = useState<CleanupPreviewDimensions | null>(null);
+
+  const formatCountLabel = useCallback(
+    (count: number, kind: 'person' | 'vehicle' | 'animal') => {
+      const base =
+        kind === 'person' ? 'nounPerson' : kind === 'vehicle' ? 'nounVehicle' : 'nounAnimal';
+      if (lang === 'ru') {
+        const mod10 = count % 10;
+        const mod100 = count % 100;
+        const form =
+          mod10 === 1 && mod100 !== 11
+            ? 'One'
+            : RU_PLURAL_RANGE.few.includes(mod10) && ![12, 13, 14].includes(mod100)
+            ? 'Few'
+            : 'Many';
+        return `${count} ${t(`${base}${form}` as const)}`;
+      }
+      if (lang === 'uz') {
+        return `${count} ta ${t(`${base}One` as const)}`;
+      }
+      const form = count === 1 ? 'One' : 'Many';
+      return `${count} ${t(`${base}${form}` as const)}`;
+    },
+    [lang, t]
+  );
 
   const personDetections = useMemo(
     () => detections.filter((det) => det.label === 'person'),
@@ -560,13 +587,13 @@ const App: React.FC = () => {
     }
     const segments: string[] = [];
     if (analysisSummary.people > 0) {
-      segments.push(t('sceneDescriptionPeople', { count: analysisSummary.people }));
+      segments.push(formatCountLabel(analysisSummary.people, 'person'));
     }
     if (analysisSummary.vehicles > 0) {
-      segments.push(t('sceneDescriptionVehicles', { count: analysisSummary.vehicles }));
+      segments.push(formatCountLabel(analysisSummary.vehicles, 'vehicle'));
     }
     if (analysisSummary.animals > 0) {
-      segments.push(t('sceneDescriptionAnimals', { count: analysisSummary.animals }));
+      segments.push(formatCountLabel(analysisSummary.animals, 'animal'));
     }
     if (analysisSummary.ocrTexts && analysisSummary.ocrTexts.length > 0) {
       const joined = analysisSummary.ocrTexts.slice(0, 3).join(' • ');
@@ -576,7 +603,7 @@ const App: React.FC = () => {
       return t('sceneDescriptionEmpty');
     }
     return t('sceneDescriptionDetected', { items: segments.join('; ') });
-  }, [analysisSummary, analysisLoading, analysisError, t]);
+  }, [analysisSummary, analysisLoading, analysisError, formatCountLabel, t]);
 
   return (
     <div className="app-shell">

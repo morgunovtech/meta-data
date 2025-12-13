@@ -58,6 +58,12 @@ export const MetadataPanel: React.FC<MetadataPanelProps> = ({ fileInfo, metadata
   }, [metadata, t]);
 
   const shotDate = metadata ? formatDetailedDate(metadata.shotDate, lang) : undefined;
+  const basicsNotes = [
+    t('basicInfoFilenameTip'),
+    t('basicInfoMetaTip'),
+    t('basicInfoTimeTip'),
+    t('basicInfoContextTip')
+  ];
 
   return (
     <aside className="panel" aria-label={t('basicInfoTitle')}>
@@ -73,6 +79,14 @@ export const MetadataPanel: React.FC<MetadataPanelProps> = ({ fileInfo, metadata
         <MetadataItem label={t('metadataFieldsLabel')} value={formattedFieldCount} />
         <MetadataItem label={t('shotDate')} value={shotDate ?? t('emptyValue')} />
         <MetadataItem label={t('cameraSummaryLabel')} value={cameraSummary ?? t('emptyValue')} />
+      </div>
+      <div className="metadata-notes" aria-label={t('basicInfoNotesTitle')}>
+        <p className="metadata-notes__title">{t('basicInfoNotesTitle')}</p>
+        <ul>
+          {basicsNotes.map((note) => (
+            <li key={note}>{note}</li>
+          ))}
+        </ul>
       </div>
     </aside>
   );
