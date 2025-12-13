@@ -18,15 +18,6 @@ export interface ReverseGeocodeResult {
   lon: number;
 }
 
-export interface TimezoneHolidayResult {
-  timezone: string;
-  localTimeIso: string;
-  holiday?: {
-    name: string;
-    countryCode: string;
-  };
-}
-
 export interface HistoricalWeatherResult {
   temperature: number;
   precipitation: number;

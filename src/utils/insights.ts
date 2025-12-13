@@ -1,5 +1,5 @@
-import type { HistoricalWeatherResult, PoiResult, ReverseGeocodeResult, TimezoneHolidayResult } from '../types/api';
-import type { StructuredMetadata } from '../types/metadata';
+import type { HistoricalWeatherResult, PoiResult, ReverseGeocodeResult } from '../types/api';
+import type { ManualCoordinates, StructuredMetadata } from '../types/metadata';
 
 type CameraPosition = 'front' | 'rear' | 'unknown';
 
@@ -103,32 +103,6 @@ export function summarizeSurveillance(pois: PoiResult[] | null | undefined): { c
   return { count: pois.length, nearest };
 }
 
-export function resolveLocalTime(
-  metadata: StructuredMetadata | null,
-  timezone: TimezoneHolidayResult | null
-): { iso?: string; timezone?: string; holidayName?: string; holidayCode?: string } {
-  if (timezone?.localTimeIso) {
-    return {
-      iso: timezone.localTimeIso,
-      timezone: timezone.timezone,
-      holidayName: timezone.holiday?.name,
-      holidayCode: timezone.holiday?.countryCode
-    };
-  }
-  if (metadata?.shotDate) {
-    return { iso: metadata.shotDate, timezone: undefined };
-  }
-  return {};
-}
-
-export function describeDayPeriod(date: Date): 'night' | 'morning' | 'day' | 'evening' {
-  const hour = date.getHours();
-  if (hour >= 5 && hour < 12) return 'morning';
-  if (hour >= 12 && hour < 18) return 'day';
-  if (hour >= 18 && hour < 23) return 'evening';
-  return 'night';
-}
-
 export function summarizeWeather(weather: HistoricalWeatherResult | null | undefined) {
   if (!weather) return null;
   return {
@@ -182,3 +156,4 @@ function toNumber(value: unknown): number | undefined {
   }
   return undefined;
 }
+

@@ -1,12 +1,7 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { BoundingBox } from '../types/detection';
 import type { BasicFileInfo } from '../types/metadata';
-import type {
-  CleanupPreviewDimensions,
-  ManualMask,
-  PrivacyLevel,
-  QualityMode
-} from '../types/cleanup';
+import type { CleanupPreviewDimensions, ManualMask, PresetKey, QualityMode } from '../types/cleanup';
 import { useT } from '../i18n';
 import { formatBytes } from '../utils/format';
 
@@ -20,10 +15,8 @@ interface CleanupDownloadBlockProps {
   manualMaskMode: boolean;
   manualMasks: ManualMask[];
   antiSearchEnabled: boolean;
-  reduceColor: boolean;
+  antiSearchLevel: number;
   watermark: boolean;
-  prnuCleanup: boolean;
-  privacyLevel: PrivacyLevel;
   previewDimensions: CleanupPreviewDimensions | null;
   setRemoveMetadata: (value: boolean) => void;
   setBlurFaces: (value: boolean) => void;
@@ -34,9 +27,10 @@ interface CleanupDownloadBlockProps {
   onManualMaskAdd: (mask: Omit<ManualMask, 'id'>) => void;
   onManualMaskRemove: (id: string) => void;
   setAntiSearchEnabled: (value: boolean) => void;
-  setReduceColor: (value: boolean) => void;
+  setAntiSearchLevel: (value: number) => void;
   setWatermark: (value: boolean) => void;
-  setPrnuCleanup: (value: boolean) => void;
+  preset: PresetKey;
+  onPresetChange: (preset: PresetKey) => void;
   onClean: () => Promise<void>;
   processing: boolean;
   previewDataUrl: string | null;
@@ -46,7 +40,8 @@ interface CleanupDownloadBlockProps {
   originalPreviewUrl: string | null;
 }
 
-const DRAW_THRESHOLD = 16;
+const BRUSH_RADIUS = 18;
+const MIN_POINT_DISTANCE = 4;
 
 const QUALITY_PERCENT: Record<QualityMode, number> = {
   low: Math.round(0.82 * 100),
@@ -64,10 +59,8 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
   manualMaskMode,
   manualMasks,
   antiSearchEnabled,
-  reduceColor,
+  antiSearchLevel,
   watermark,
-  prnuCleanup,
-  privacyLevel,
   previewDimensions,
   setRemoveMetadata,
   setBlurFaces,
@@ -78,9 +71,10 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
   onManualMaskAdd,
   onManualMaskRemove,
   setAntiSearchEnabled,
-  setReduceColor,
+  setAntiSearchLevel,
   setWatermark,
-  setPrnuCleanup,
+  preset,
+  onPresetChange,
   onClean,
   processing,
   previewDataUrl,
@@ -91,19 +85,17 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
 }) => {
   const t = useT();
   const overlayRef = useRef<HTMLDivElement | null>(null);
-  const [draft, setDraft] = useState<{
-    startX: number;
-    startY: number;
-    currentX: number;
-    currentY: number;
-  } | null>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [draftStroke, setDraftStroke] = useState<ManualMask | null>(null);
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const [overlayRedrawKey, setOverlayRedrawKey] = useState(0);
 
   const estimatedLabel = useMemo(() => {
     if (estimatedSize != null) {
       return formatBytes(estimatedSize);
     }
     if (fileInfo) {
-      return formatBytes(fileInfo.sizeBytes);
+      return formatBytes(fileInfo.originalSizeBytes ?? fileInfo.sizeBytes);
     }
     return t('emptyValue');
   }, [estimatedSize, fileInfo, t]);
@@ -135,6 +127,8 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
     [personDetections]
   );
 
+  const reduceColor = antiSearchEnabled && antiSearchLevel >= 3;
+
   const blurSummary = useMemo(() => {
     if (manualMasks.length > 0) {
       return t('privacyDiffBlurManual', { count: manualMasks.length });
@@ -149,28 +143,16 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
   }, [blurFaces, manualMasks.length, peopleCount, t]);
 
   const metadataSummary = removeMetadata
-    ? t('privacyDiffMetadataRemoved')
+    ? t('privacyDiffMetadataPrnuRemoved')
     : t('privacyDiffMetadataKept');
   const renameSummary = renameFile ? t('privacyDiffRenameOn') : t('privacyDiffRenameOff');
   const antiSearchSummary = antiSearchEnabled ? t('privacyDiffAntiSearchOn') : t('privacyDiffAntiSearchOff');
   const colorSummary = reduceColor ? t('privacyDiffColorReduced') : t('privacyDiffColorFull');
   const watermarkSummary = watermark ? t('privacyDiffWatermarkOn') : t('privacyDiffWatermarkOff');
-  const prnuSummary = prnuCleanup ? t('privacyDiffPrnuOn') : t('privacyDiffPrnuOff');
   const qualitySummary = t('privacyDiffQualityMode', {
     mode: t(`qualityMode_${qualityMode}` as const),
     percent: QUALITY_PERCENT[qualityMode]
   });
-
-  const privacyLevelLabel = useMemo(() => {
-    switch (privacyLevel) {
-      case 'high':
-        return t('privacyLevelHigh');
-      case 'medium':
-        return t('privacyLevelMedium');
-      default:
-        return t('privacyLevelLow');
-    }
-  }, [privacyLevel, t]);
 
   const handleAntiSearchToggle = useCallback(
     (checked: boolean) => {
@@ -179,67 +161,86 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
     [setAntiSearchEnabled]
   );
 
+  const toImagePoint = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!fileInfo || !overlayRef.current) return null;
+      const rect = overlayRef.current.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return null;
+      const x = ((event.clientX - rect.left) / rect.width) * fileInfo.width;
+      const y = ((event.clientY - rect.top) / rect.height) * fileInfo.height;
+      return { x, y };
+    },
+    [fileInfo]
+  );
+
+  const mapStrokeToOverlay = useCallback(
+    (mask: ManualMask) => {
+      if (!fileInfo || !overlayRef.current) return null;
+      const rect = overlayRef.current.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return null;
+      const scaleX = rect.width / fileInfo.width;
+      const scaleY = rect.height / fileInfo.height;
+      return {
+        points: mask.points.map((pt) => ({ x: pt.x * scaleX, y: pt.y * scaleY })),
+        radius: mask.radius * ((scaleX + scaleY) / 2)
+      };
+    },
+    [fileInfo]
+  );
+
+  const getBrushRadius = useCallback(() => {
+    if (!fileInfo) return BRUSH_RADIUS;
+    const base = Math.min(fileInfo.width, fileInfo.height) * 0.012;
+    return Math.max(12, base);
+  }, [fileInfo]);
+
   const handlePointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (!manualMaskMode || !fileInfo || !overlayRef.current) {
         return;
       }
+      const imagePoint = toImagePoint(event);
+      if (!imagePoint) return;
+      overlayRef.current.setPointerCapture(event.pointerId);
+      setDraftStroke({ id: 'draft', points: [imagePoint], radius: getBrushRadius() });
+      lastPointRef.current = imagePoint;
       event.preventDefault();
-      const overlay = overlayRef.current;
-      overlay.setPointerCapture(event.pointerId);
-      const rect = overlay.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      setDraft({ startX: x, startY: y, currentX: x, currentY: y });
     },
-    [manualMaskMode, fileInfo]
+    [fileInfo, getBrushRadius, manualMaskMode, toImagePoint]
   );
 
-  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (!draft || !overlayRef.current) {
-      return;
-    }
-    event.preventDefault();
-    const rect = overlayRef.current.getBoundingClientRect();
-    const currentX = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
-    const currentY = Math.max(0, Math.min(event.clientY - rect.top, rect.height));
-    setDraft((prev) => (prev ? { ...prev, currentX, currentY } : prev));
-  }, [draft]);
+  const handlePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!manualMaskMode || !draftStroke) {
+        return;
+      }
+      const nextPoint = toImagePoint(event);
+      if (!nextPoint) return;
+      const lastPoint = lastPointRef.current ?? draftStroke.points[draftStroke.points.length - 1];
+      const dx = nextPoint.x - lastPoint.x;
+      const dy = nextPoint.y - lastPoint.y;
+      if (Math.hypot(dx, dy) < MIN_POINT_DISTANCE) {
+        return;
+      }
+      lastPointRef.current = nextPoint;
+      setDraftStroke((prev) =>
+        prev ? { ...prev, points: [...prev.points, nextPoint] } : prev
+      );
+      event.preventDefault();
+    },
+    [draftStroke, manualMaskMode, toImagePoint]
+  );
 
   const finalizeMask = useCallback(() => {
-    if (!draft || !fileInfo || !overlayRef.current) {
-      setDraft(null);
+    if (!draftStroke || draftStroke.points.length < 2) {
+      setDraftStroke(null);
+      lastPointRef.current = null;
       return;
     }
-    const overlay = overlayRef.current;
-    const width = overlay.clientWidth;
-    const height = overlay.clientHeight;
-    if (width === 0 || height === 0) {
-      setDraft(null);
-      return;
-    }
-    const startX = Math.max(0, Math.min(draft.startX, width));
-    const startY = Math.max(0, Math.min(draft.startY, height));
-    const endX = Math.max(0, Math.min(draft.currentX, width));
-    const endY = Math.max(0, Math.min(draft.currentY, height));
-    const xPx = Math.min(startX, endX);
-    const yPx = Math.min(startY, endY);
-    const wPx = Math.abs(endX - startX);
-    const hPx = Math.abs(endY - startY);
-    if (wPx < DRAW_THRESHOLD || hPx < DRAW_THRESHOLD) {
-      setDraft(null);
-      return;
-    }
-    const scaleX = fileInfo.width / width;
-    const scaleY = fileInfo.height / height;
-    onManualMaskAdd({
-      x: xPx * scaleX,
-      y: yPx * scaleY,
-      width: wPx * scaleX,
-      height: hPx * scaleY
-    });
-    setDraft(null);
-  }, [draft, fileInfo, onManualMaskAdd]);
+    onManualMaskAdd(draftStroke);
+    setDraftStroke(null);
+    lastPointRef.current = null;
+  }, [draftStroke, onManualMaskAdd]);
 
   const handlePointerUp = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -255,28 +256,85 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
     finalizeMask();
   }, [finalizeMask]);
 
-  const draftStyle = useMemo(() => {
-    if (!draft || !overlayRef.current) {
-      return null;
+  const handlePointerCancel = useCallback(() => {
+    finalizeMask();
+  }, [finalizeMask]);
+
+  useEffect(() => {
+    const handleResize = () => setOverlayRedrawKey((value) => value + 1);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    const canvas = overlayCanvasRef.current;
+    const container = overlayRef.current;
+    if (!canvas || !container || !fileInfo) return;
+    const { width, height } = container.getBoundingClientRect();
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, width, height);
+
+    const drawStroke = (mask: ManualMask, color: string) => {
+      const mapped = mapStrokeToOverlay(mask);
+      if (!mapped || mapped.points.length < 2) return;
+      ctx.save();
+      ctx.lineWidth = Math.max(mapped.radius * 2, 8);
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.75;
+      ctx.beginPath();
+      ctx.moveTo(mapped.points[0].x, mapped.points[0].y);
+      for (let i = 1; i < mapped.points.length; i += 1) {
+        const pt = mapped.points[i];
+        ctx.lineTo(pt.x, pt.y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    };
+
+    manualMasks.forEach((mask) => drawStroke(mask, 'rgba(59, 130, 246, 0.45)'));
+    if (draftStroke) {
+      drawStroke(draftStroke, 'rgba(255, 99, 71, 0.6)');
     }
-    const overlay = overlayRef.current;
-    const x = Math.min(draft.startX, draft.currentX);
-    const y = Math.min(draft.startY, draft.currentY);
-    const width = Math.abs(draft.currentX - draft.startX);
-    const height = Math.abs(draft.currentY - draft.startY);
-    return {
-      left: `${(x / overlay.clientWidth) * 100}%`,
-      top: `${(y / overlay.clientHeight) * 100}%`,
-      width: `${(width / overlay.clientWidth) * 100}%`,
-      height: `${(height / overlay.clientHeight) * 100}%`
-    } as React.CSSProperties;
-  }, [draft]);
+  }, [draftStroke, fileInfo, manualMasks, mapStrokeToOverlay, overlayRedrawKey]);
 
   return (
     <section className="panel cleanup-panel">
       <div className="cleanup-panel__header">
         <h2 className="section-title">{t('cleanupTitle')}</h2>
         <p className="cleanup-panel__hint">{t('cleanupHint')}</p>
+      </div>
+
+      <div className="cleanup-presets">
+        <label className="cleanup-select">
+          <span>{t('presetLabel')}</span>
+          <select value={preset} onChange={(event) => onPresetChange(event.target.value as PresetKey)}>
+            <option value="none">{t('presetNone')}</option>
+            <option value="social">{t('presetSocial')}</option>
+            <option value="work">{t('presetWork')}</option>
+            <option value="proof">{t('presetProof')}</option>
+            <option value="personal">{t('presetPersonal')}</option>
+          </select>
+        </label>
+      </div>
+
+      <div className="cleanup-quality">
+        <label className="cleanup-select">
+          <span>{t('qualityLabel')}</span>
+          <select value={qualityMode} onChange={(event) => setQualityMode(event.target.value as QualityMode)}>
+            <option value="low">{t('qualityMode_low')}</option>
+            <option value="medium">{t('qualityMode_medium')}</option>
+            <option value="original">{t('qualityMode_original')}</option>
+          </select>
+        </label>
+        <p className="cleanup-select__helper">{t('qualityHelper')}</p>
+        <span className="cleanup-select__meta">
+          {t('qualityPercentLabel', { percent: QUALITY_PERCENT[qualityMode] })} · {t('estimatedOutputSize', { size: estimatedLabel })}
+        </span>
       </div>
 
       <div className="cleanup-options cleanup-options--grid">
@@ -327,20 +385,6 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
             <small>{t('antiSearchHint')}</small>
           </span>
         </label>
-        <label className={`cleanup-checkbox ${prnuCleanup ? 'is-active' : ''}`}>
-          <input type="checkbox" checked={prnuCleanup} onChange={(event) => setPrnuCleanup(event.target.checked)} />
-          <span>
-            <strong>{t('prnuLabel')}</strong>
-            <small>{t('prnuHint')}</small>
-          </span>
-        </label>
-        <label className={`cleanup-checkbox ${reduceColor ? 'is-active' : ''}`}>
-          <input type="checkbox" checked={reduceColor} onChange={(event) => setReduceColor(event.target.checked)} />
-          <span>
-            <strong>{t('reduceColorLabel')}</strong>
-            <small>{t('reduceColorHint')}</small>
-          </span>
-        </label>
         <label className={`cleanup-checkbox ${watermark ? 'is-active' : ''}`}>
           <input type="checkbox" checked={watermark} onChange={(event) => setWatermark(event.target.checked)} />
           <span>
@@ -353,27 +397,6 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
       {manualMaskMode ? <p className="cleanup-preview__hint">{t('manualMaskDrawingHint')}</p> : null}
 
       <div className="cleanup-control-row">
-        <fieldset className="quality-selector">
-          <legend>{t('qualityLabel')}</legend>
-          <div className="quality-selector__options">
-            {(['low', 'medium', 'original'] as QualityMode[]).map((mode) => (
-              <label key={mode} className={`quality-selector__option ${qualityMode === mode ? 'is-active' : ''}`}>
-                <input
-                  type="radio"
-                  name="quality-mode"
-                  value={mode}
-                  checked={qualityMode === mode}
-                  onChange={() => setQualityMode(mode)}
-                />
-                <span>{t(`qualityMode_${mode}` as const)}</span>
-              </label>
-            ))}
-          </div>
-          <span className="quality-selector__meta">
-            {t('qualityPercentLabel', { percent: QUALITY_PERCENT[qualityMode] })} ·{' '}
-            {t('estimatedOutputSize', { size: estimatedLabel })}
-          </span>
-        </fieldset>
         {(blurFaces || manualMasks.length > 0) && (
           <div className="range-line range-line--compact">
             <label htmlFor="blur-strength">{t('blurStrengthLabel')}</label>
@@ -396,6 +419,25 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
       ) : (
         <p className="notice notice--muted">{t('antiSearchOffHint')}</p>
       )}
+
+      {antiSearchEnabled ? (
+        <div className="range-line range-line--compact">
+          <label htmlFor="anti-search-level">{t('antiSearchLevelLabel')}</label>
+          <input
+            id="anti-search-level"
+            type="range"
+            min="1"
+            max="3"
+            step="1"
+            value={antiSearchLevel}
+            onChange={(event) => setAntiSearchLevel(Number(event.target.value))}
+          />
+          <span className="range-line__meta">{t('antiSearchLevelValue', { value: antiSearchLevel })}</span>
+        </div>
+      ) : null}
+      {antiSearchEnabled ? (
+        <p className="cleanup-select__helper">{t('antiSearchLevelHelper')}</p>
+      ) : null}
 
       <div className="cleanup-diff-grid">
         <figure className="cleanup-diff-grid__preview">
@@ -420,20 +462,11 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
                 onPointerLeave={handlePointerLeave}
+                onPointerCancel={handlePointerCancel}
+                role="presentation"
+                style={{ pointerEvents: manualMaskMode ? 'auto' : 'none' }}
               >
-                {manualMasks.map((mask) => (
-                  <div
-                    key={mask.id}
-                    className="cleanup-preview__mask"
-                    style={{
-                      left: `${(mask.x / (fileInfo?.width ?? 1)) * 100}%`,
-                      top: `${(mask.y / (fileInfo?.height ?? 1)) * 100}%`,
-                      width: `${(mask.width / (fileInfo?.width ?? 1)) * 100}%`,
-                      height: `${(mask.height / (fileInfo?.height ?? 1)) * 100}%`
-                    }}
-                  />
-                ))}
-                {draftStyle ? <div className="cleanup-preview__mask cleanup-preview__mask--draft" style={draftStyle} /> : null}
+                <canvas ref={overlayCanvasRef} className="cleanup-preview__overlay-canvas" />
               </div>
             </div>
           ) : (
@@ -442,17 +475,13 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
         </figure>
         <div className="cleanup-summary">
           <h3 className="cleanup-summary__title">{t('privacyDiffTitle')}</h3>
-          <p className={`cleanup-summary__badge cleanup-summary__badge--${privacyLevel}`}>
-            {t('privacyLevelLabel', { level: privacyLevelLabel })}
-          </p>
           <ul>
             <li>{metadataSummary}</li>
             <li>{resolutionSummary}</li>
             <li>{blurSummary}</li>
             <li>{antiSearchSummary}</li>
             <li>{renameSummary}</li>
-            <li>{colorSummary}</li>
-            <li>{prnuSummary}</li>
+            {reduceColor ? <li>{colorSummary}</li> : null}
             <li>{watermarkSummary}</li>
             <li>{qualitySummary}</li>
           </ul>
