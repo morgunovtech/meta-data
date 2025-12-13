@@ -11,7 +11,7 @@ interface UploadZoneProps {
 
 export const UploadZone: React.FC<UploadZoneProps> = ({ loading, onFile, error }) => {
   const t = useT();
-  const uploadInputId = useId();
+  const uploadInputId = `upload-input-${useId().replace(/[:]/g, '')}`;
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -38,17 +38,6 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ loading, onFile, error }
       <p className="panel__hint">{t('uploadLead')}</p>
       <div
         className={clsx('drop-zone', { 'drag-over': dragOver })}
-        role="button"
-        tabIndex={0}
-        aria-busy={loading}
-        aria-label={t('uploadTitle')}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            inputRef.current?.click();
-          }
-        }}
-        onClick={() => inputRef.current?.click()}
         onDragEnter={(event) => {
           event.preventDefault();
           setDragOver(true);
@@ -60,7 +49,18 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ loading, onFile, error }
         onDragOver={(event) => event.preventDefault()}
         onDrop={handleDrop}
       >
-        <label className="drop-zone__label" htmlFor={uploadInputId} role="button" tabIndex={0}>
+        <label
+          className="drop-zone__label"
+          htmlFor={uploadInputId}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              inputRef.current?.click();
+            }
+          }}
+        >
           <span className="sr-only">{t('uploadTitle')}</span>
           <span className="button button--primary" aria-live="polite">
             {loading ? '…' : t('uploadButton')}
@@ -73,7 +73,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ loading, onFile, error }
           id={uploadInputId}
           ref={inputRef}
           type="file"
-          accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/bmp,image/heic,image/heif"
+          accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/bmp,image/heic,image/heif,.heic,.heif"
           className="drop-zone__file sr-only"
           aria-label={t('uploadButton')}
           onChange={(event) => handleFiles(event.target.files)}
