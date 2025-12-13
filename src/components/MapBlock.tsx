@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import maplibregl from 'maplibre-gl';
+import type maplibregl from 'maplibre-gl';
 import type { FeatureCollection, Polygon } from 'geojson';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -14,22 +14,48 @@ export const MapBlock: React.FC<MapBlockProps> = ({ lat, lon, accuracy }) => {
   const mapRef = useRef<maplibregl.Map | null>(null);
 
   useEffect(() => {
-    if (!containerRef.current) return;
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: 'https://demotiles.maplibre.org/style.json',
-      center: [lon, lat],
-      zoom: 15,
-      attributionControl: true
-    });
-    mapRef.current = map;
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }));
-    const marker = new maplibregl.Marker({ color: '#38bdf8' }).setLngLat([lon, lat]).addTo(map);
+    let map: maplibregl.Map | null = null;
+    let marker: maplibregl.Marker | null = null;
+    let cancelled = false;
+
+    const setup = async () => {
+      if (!containerRef.current) return;
+      try {
+        const maplibre = await import('maplibre-gl');
+        const supportedFn = (maplibre as any)?.supported;
+        if (typeof supportedFn === 'function') {
+          const ok = supportedFn({ failIfMajorPerformanceCaveat: false });
+          if (!ok) {
+            console.warn('maplibre unsupported: no WebGL');
+            return;
+          }
+        }
+        if (cancelled) return;
+        map = new maplibre.Map({
+          container: containerRef.current,
+          style: 'https://demotiles.maplibre.org/style.json',
+          center: [lon, lat],
+          zoom: 15,
+          attributionControl: true
+        });
+        mapRef.current = map;
+        map.addControl(new maplibre.NavigationControl({ visualizePitch: true }));
+        marker = new maplibre.Marker({ color: '#38bdf8' }).setLngLat([lon, lat]).addTo(map);
+      } catch (error) {
+        console.warn('maplibre-init', error);
+        mapRef.current = null;
+      }
+    };
+
+    setup();
 
     return () => {
-      marker.remove();
-      clearAccuracy(map);
-      map.remove();
+      cancelled = true;
+      marker?.remove();
+      if (map) {
+        clearAccuracy(map);
+        map.remove();
+      }
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
