@@ -11,6 +11,8 @@ export interface BasicFileInfo {
   originalMimeType?: string;
   originalSizeBytes?: number;
   originalName?: string;
+  originalWidth?: number;
+  originalHeight?: number;
   wasConverted?: boolean;
   processedSizeBytes?: number;
 }

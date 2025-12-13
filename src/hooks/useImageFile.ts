@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n';
 import type { BasicFileInfo } from '../types/metadata';
+import { decodeHeicToJpegForPreview } from '../utils/heic';
 
 const MAX_SIZE_BYTES = 20 * 1024 * 1024;
 const MAX_PIXEL_COUNT = 40_000_000; // guard overly large resolution that may crash canvases
@@ -43,19 +44,6 @@ async function makeThumbnail(
   ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
   const url = canvas.toDataURL('image/jpeg', 0.92);
   return { url, width: image.width, height: image.height };
-}
-
-async function convertHeicToJpeg(file: File): Promise<File> {
-  const heic2any = (await import('heic2any')) as unknown as (options: {
-    blob: Blob;
-    toType?: string;
-    quality?: number;
-  }) => Promise<Blob | Blob[]>;
-
-  const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 });
-  const outputBlob = Array.isArray(converted) ? converted[0] : converted;
-  const safeName = file.name.replace(/\.(heic|heif)$/i, '') || 'photo';
-  return new File([outputBlob], `${safeName}.jpg`, { type: 'image/jpeg' });
 }
 
 export function useImageFile() {
@@ -103,7 +91,8 @@ export function useImageFile() {
 
         const needsHeicConversion = HEIC_TYPES.includes(inferredType);
         const sourceFile = file;
-        const workingFile = needsHeicConversion ? await convertHeicToJpeg(file) : file;
+        const heicDecoded = needsHeicConversion ? await decodeHeicToJpegForPreview(file) : null;
+        const workingFile = heicDecoded?.file ?? file;
         const mimeType = workingFile.type || inferredType || 'image/jpeg';
         const objectUrl = URL.createObjectURL(workingFile);
         objectUrlRef.current = objectUrl;
@@ -127,6 +116,8 @@ export function useImageFile() {
           originalMimeType: needsHeicConversion ? sourceFile.type : undefined,
           originalSizeBytes: needsHeicConversion ? sourceFile.size : undefined,
           originalName: needsHeicConversion ? sourceFile.name : undefined,
+          originalWidth: heicDecoded?.width,
+          originalHeight: heicDecoded?.height,
           processedSizeBytes: workingFile.size,
           wasConverted: needsHeicConversion
         };

@@ -284,11 +284,16 @@ type DecodedSource = {
 };
 
 async function decodeForAnalysis(fileInfo: BasicFileInfo): Promise<DecodedSource | null> {
-  const longestSide = Math.max(fileInfo.width, fileInfo.height) || 1;
-  const pixelScale = Math.sqrt(MAX_ANALYSIS_PIXELS / Math.max(1, fileInfo.width * fileInfo.height));
+  const workingWidth = fileInfo.width;
+  const workingHeight = fileInfo.height;
+  const baseWidth = fileInfo.originalWidth ?? workingWidth;
+  const baseHeight = fileInfo.originalHeight ?? workingHeight;
+
+  const longestSide = Math.max(workingWidth, workingHeight) || 1;
+  const pixelScale = Math.sqrt(MAX_ANALYSIS_PIXELS / Math.max(1, workingWidth * workingHeight));
   const targetScale = Math.min(1, DECODE_MAX_DIMENSION / longestSide, pixelScale);
-  const targetWidth = Math.max(1, Math.round(fileInfo.width * targetScale));
-  const targetHeight = Math.max(1, Math.round(fileInfo.height * targetScale));
+  const targetWidth = Math.max(1, Math.round(workingWidth * targetScale));
+  const targetHeight = Math.max(1, Math.round(workingHeight * targetScale));
 
   if (typeof createImageBitmap === 'function') {
     try {
@@ -304,8 +309,8 @@ async function decodeForAnalysis(fileInfo: BasicFileInfo): Promise<DecodedSource
       };
       return {
         source: bitmap as CanvasSource,
-        baseWidth: fileInfo.width,
-        baseHeight: fileInfo.height,
+        baseWidth,
+        baseHeight,
         cleanup
       };
     } catch (error) {
@@ -324,8 +329,8 @@ async function decodeForAnalysis(fileInfo: BasicFileInfo): Promise<DecodedSource
 
   return {
     source: image as CanvasSource,
-    baseWidth: fileInfo.width,
-    baseHeight: fileInfo.height
+    baseWidth,
+    baseHeight
   };
 }
 
