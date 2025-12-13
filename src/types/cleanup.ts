@@ -23,8 +23,6 @@ export interface AntiSearchParams {
   warpStrength: number;
 }
 
-export type PrivacyLevel = 'low' | 'medium' | 'high';
-
 export type QualityMode = 'low' | 'medium' | 'original';
 
 export interface CleanupPreviewDimensions {
@@ -33,10 +31,3 @@ export interface CleanupPreviewDimensions {
 }
 
 export type PresetKey = 'none' | 'social' | 'work' | 'proof' | 'personal';
-
-export type PrivacyCategory = 'location' | 'time' | 'identification' | 'device' | 'search';
-
-export interface PrivacyScores {
-  overall: number;
-  categories: Array<{ id: PrivacyCategory; score: number }>;
-}

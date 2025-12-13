@@ -1,14 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import type { BoundingBox } from '../types/detection';
 import type { BasicFileInfo } from '../types/metadata';
-import type {
-  CleanupPreviewDimensions,
-  ManualMask,
-  PresetKey,
-  PrivacyLevel,
-  PrivacyScores,
-  QualityMode
-} from '../types/cleanup';
+import type { CleanupPreviewDimensions, ManualMask, PresetKey, QualityMode } from '../types/cleanup';
 import { useT } from '../i18n';
 import { formatBytes } from '../utils/format';
 
@@ -26,8 +19,6 @@ interface CleanupDownloadBlockProps {
   reduceColor: boolean;
   watermark: boolean;
   prnuCleanup: boolean;
-  privacyLevel: PrivacyLevel;
-  privacyScores: PrivacyScores;
   previewDimensions: CleanupPreviewDimensions | null;
   setRemoveMetadata: (value: boolean) => void;
   setBlurFaces: (value: boolean) => void;
@@ -44,7 +35,6 @@ interface CleanupDownloadBlockProps {
   setPrnuCleanup: (value: boolean) => void;
   preset: PresetKey;
   onPresetChange: (preset: PresetKey) => void;
-  onApplyRecommendation: () => void;
   onClean: () => Promise<void>;
   processing: boolean;
   previewDataUrl: string | null;
@@ -76,8 +66,6 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
   reduceColor,
   watermark,
   prnuCleanup,
-  privacyLevel,
-  privacyScores,
   previewDimensions,
   setRemoveMetadata,
   setBlurFaces,
@@ -94,7 +82,6 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
   setPrnuCleanup,
   preset,
   onPresetChange,
-  onApplyRecommendation,
   onClean,
   processing,
   previewDataUrl,
@@ -174,17 +161,6 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
     mode: t(`qualityMode_${qualityMode}` as const),
     percent: QUALITY_PERCENT[qualityMode]
   });
-
-  const privacyLevelLabel = useMemo(() => {
-    switch (privacyLevel) {
-      case 'high':
-        return t('privacyLevelHigh');
-      case 'medium':
-        return t('privacyLevelMedium');
-      default:
-        return t('privacyLevelLow');
-    }
-  }, [privacyLevel, t]);
 
   const handleAntiSearchToggle = useCallback(
     (checked: boolean) => {
@@ -304,9 +280,6 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
             <option value="personal">{t('presetPersonal')}</option>
           </select>
         </label>
-        <button type="button" className="button button--primary" onClick={onApplyRecommendation}>
-          {t('privacyOneClick')}
-        </button>
       </div>
 
       <div className="cleanup-quality">
@@ -437,30 +410,6 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
         </div>
       ) : null}
 
-      <div className="privacy-score">
-        <h3 className="cleanup-summary__title">{t('privacyScoreTitle', { score: privacyScores.overall })}</h3>
-        <ul className="privacy-score__list">
-          {privacyScores.categories.map((category) => (
-            <li key={category.id} className="privacy-score__item">
-              <div className="privacy-score__row">
-                <span>
-                  {t('privacyScoreRow', {
-                    label: t(`privacyScore_${category.id}` as const),
-                    score: category.score
-                  })}
-                </span>
-              </div>
-              <div className="privacy-score__bar" aria-hidden="true">
-                <div
-                  className="privacy-score__bar-fill"
-                  style={{ width: `${category.score}%` }}
-                />
-              </div>
-            </li>
-          ))}
-        </ul>
-      </div>
-
       <div className="cleanup-diff-grid">
         <figure className="cleanup-diff-grid__preview">
           <figcaption>{t('previewOriginal')}</figcaption>
@@ -506,9 +455,6 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
         </figure>
         <div className="cleanup-summary">
           <h3 className="cleanup-summary__title">{t('privacyDiffTitle')}</h3>
-          <p className={`cleanup-summary__badge cleanup-summary__badge--${privacyLevel}`}>
-            {t('privacyLevelLabel', { level: privacyLevelLabel })}
-          </p>
           <ul>
             <li>{metadataSummary}</li>
             <li>{resolutionSummary}</li>

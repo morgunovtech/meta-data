@@ -12,15 +12,7 @@ import { useImageAnalysis } from './hooks/useImageAnalysis';
 import type { ManualCoordinates } from './types/metadata';
 import { useI18n, useT } from './i18n';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
-import type {
-  AntiSearchParams,
-  CleanupPreviewDimensions,
-  ManualMask,
-  PresetKey,
-  PrivacyLevel,
-  PrivacyScores,
-  QualityMode
-} from './types/cleanup';
+import type { AntiSearchParams, CleanupPreviewDimensions, ManualMask, PresetKey, QualityMode } from './types/cleanup';
 import {
   applyAntiSearch,
   applyColorReduction,
@@ -129,26 +121,11 @@ function createAnonymisedName(extension: string): string {
   return `photo-${random}.${extension}`;
 }
 
-function computePrivacyLevel(score: number): PrivacyLevel {
-  if (score >= 75) {
-    return 'high';
-  }
-  if (score >= 45) {
-    return 'medium';
-  }
-  return 'low';
-}
-
 function estimateDataUrlBytes(dataUrl: string): number {
   const base64 = dataUrl.split(',')[1];
   if (!base64) return 0;
   const padding = (base64.match(/=+$/)?.[0].length ?? 0);
   return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
-}
-
-function scoreFromRisk(risk: number): number {
-  const bounded = Math.min(1, Math.max(0, risk));
-  return Math.round((1 - bounded) * 100);
 }
 
 const App: React.FC = () => {
@@ -501,78 +478,6 @@ const App: React.FC = () => {
     []
   );
 
-  const applySafetyRecommendations = useCallback(() => {
-    setPreset('none');
-    setRemoveMetadata(true);
-    setRenameFile(true);
-    if (personDetections.length > 0) {
-      setBlurFaces(true);
-    }
-    setAntiSearchEnabled(true);
-    setAntiSearchLevel((current) => Math.max(2, current));
-    setPrnuCleanup(true);
-  }, [personDetections.length]);
-
-
-  const privacyScores = useMemo<PrivacyScores>(() => {
-    const hasGps = Boolean(metadata?.gps);
-    const hasTime = Boolean(metadata?.shotDate);
-    const hasFaces = personDetections.length > 0;
-    const hasText = Boolean(analysisSummary?.ocrTexts && analysisSummary.ocrTexts.length > 0);
-    const hasDevice = Boolean(metadata?.cameraMake || metadata?.cameraModel || metadata?.lensModel || metadata?.software);
-
-    const locationRisk = hasGps ? 0.7 : 0.2;
-    const timeRisk = hasTime ? 0.45 : 0.15;
-    const idRisk = hasFaces || hasText ? 0.65 : 0.25;
-    const deviceRisk = hasDevice ? 0.55 : 0.2;
-    const searchRisk = 0.5;
-
-    const categories = [
-      {
-        id: 'location' as const,
-        score: scoreFromRisk(locationRisk * (removeMetadata ? 0.35 : 1))
-      },
-      {
-        id: 'time' as const,
-        score: scoreFromRisk(timeRisk * (removeMetadata ? 0.4 : 1))
-      },
-      {
-        id: 'identification' as const,
-        score: scoreFromRisk(
-          idRisk * (blurFaces || manualMasks.length > 0 ? 0.35 : 1) * (antiSearchEnabled ? 0.8 : 1)
-        )
-      },
-      {
-        id: 'device' as const,
-        score: scoreFromRisk(deviceRisk * (removeMetadata ? 0.45 : 1) * (renameFile ? 0.8 : 1))
-      },
-      {
-        id: 'search' as const,
-        score: scoreFromRisk(searchRisk * (antiSearchEnabled ? 0.35 : 1) * (prnuCleanup ? 0.85 : 1))
-      }
-    ];
-
-    const overall = Math.round(
-      categories.reduce((acc, item) => acc + item.score, 0) / (categories.length || 1)
-    );
-
-    return { overall, categories };
-  }, [
-    analysisSummary?.ocrTexts,
-    antiSearchEnabled,
-    manualMasks.length,
-    metadata?.cameraMake,
-    metadata?.cameraModel,
-    metadata?.gps,
-    metadata?.lensModel,
-    metadata?.software,
-    metadata?.shotDate,
-    personDetections.length,
-    prnuCleanup,
-    removeMetadata,
-    renameFile
-  ]);
-
   const sceneDescription = useMemo(() => {
     if (!analysisSummary) {
       if (analysisLoading) return t('sceneDescriptionLoading');
@@ -654,7 +559,6 @@ const App: React.FC = () => {
         reduceColor={reduceColor}
         watermark={watermark}
         prnuCleanup={prnuCleanup}
-        privacyLevel={privacyLevel}
         previewDimensions={previewDimensions}
         setRemoveMetadata={setRemoveMetadata}
         setBlurFaces={setBlurFaces}
@@ -672,8 +576,6 @@ const App: React.FC = () => {
         setPrnuCleanup={setPrnuCleanup}
         preset={preset}
         onPresetChange={applyPreset}
-        privacyScores={privacyScores}
-        onApplyRecommendation={applySafetyRecommendations}
         onClean={handleDownload}
         processing={processing}
         previewDataUrl={previewDataUrl}

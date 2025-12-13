@@ -1,26 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n, useT, type MessageKey } from '../i18n';
 import type { StructuredMetadata, ManualCoordinates } from '../types/metadata';
-import type {
-  ReverseGeocodeResult,
-  TimezoneHolidayResult,
-  HistoricalWeatherResult,
-  PoiResult,
-  ImageUniquenessResult
-} from '../types/api';
+import type { ReverseGeocodeResult, HistoricalWeatherResult, PoiResult, ImageUniquenessResult } from '../types/api';
 import { useAPIFetch } from '../hooks/useAPIFetch';
 import { ErrorBanner } from './ErrorBanner';
 import { MapBlock } from './MapBlock';
 import { googleMapsLink, streetViewLink } from '../utils/mapLinks';
-import { formatMeters, formatNumber } from '../utils/format';
-import {
-  describeDayPeriod,
-  extractSoftware,
-  inferCameraPosition,
-  inferMovement,
-  resolveLocalTime,
-  summarizeWeather
-} from '../utils/insights';
+import { formatDetailedDate, formatMeters, formatNumber } from '../utils/format';
+import { extractSoftware, inferCameraPosition, inferMovement, summarizeWeather } from '../utils/insights';
 import { computePhash } from '../utils/phash';
 
 interface ShockBlockProps {
@@ -145,7 +132,6 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
   }, [coords?.lat, coords?.lon]);
 
   const reverseFetch = useAPIFetch<ReverseGeocodeResult>();
-  const timezoneFetch = useAPIFetch<TimezoneHolidayResult>();
   const weatherFetch = useAPIFetch<HistoricalWeatherResult>();
   const poiFetch = useAPIFetch<PoiResult[]>();
   const surveillanceFetch = useAPIFetch<PoiResult[]>();
@@ -155,13 +141,6 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
     if (!coords) return;
     reverseFetch.request(`/api/reverse-geocode?lat=${coords.lat}&lon=${coords.lon}`);
   }, [coords]);
-
-  useEffect(() => {
-    if (!coords || !timestamp) return;
-    timezoneFetch.request(
-      `/api/timezone-and-holiday?lat=${coords.lat}&lon=${coords.lon}&timestamp=${encodeURIComponent(timestamp)}`
-    );
-  }, [coords, timestamp]);
 
   useEffect(() => {
     if (!coords || !timestamp) return;
@@ -182,41 +161,11 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
   const software = useMemo(() => extractSoftware(metadata), [metadata]);
   const cameraPosition = useMemo(() => inferCameraPosition(metadata), [metadata]);
   const movement = useMemo(() => inferMovement(metadata), [metadata]);
-  const localContext = useMemo(
-    () => resolveLocalTime(metadata, timezoneFetch.data ?? null, coords),
-    [coords, metadata, timezoneFetch.data]
-  );
   const weatherSummary = useMemo(() => summarizeWeather(weatherFetch.data ?? null), [weatherFetch.data]);
-
-  const localTimeDetails = useMemo(() => {
-    const iso = metadata?.shotDate ?? localContext.iso;
-    if (!iso) return null;
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return null;
-    const options: Intl.DateTimeFormatOptions = {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    };
-    if (isValidTimeZone(localContext.timezone)) {
-      options.timeZone = localContext.timezone;
-    }
-    const formatted = new Intl.DateTimeFormat(lang, options).format(date);
-    return { formatted: capitalize(formatted), timezone: localContext.timezone };
-  }, [lang, localContext.iso, localContext.timezone, metadata?.shotDate]);
-
-  const timePeriodLabel = useMemo(() => {
-    const iso = localContext.iso ?? metadata?.shotDate;
-    if (!iso) return null;
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return null;
-    const periodKey = `dayPeriod_${describeDayPeriod(date)}` as MessageKey;
-    return t(periodKey);
-  }, [localContext.iso, metadata?.shotDate, t]);
+  const shotTimeLabel = useMemo(() => {
+    if (!metadata?.shotDate) return null;
+    return formatDetailedDate(metadata.shotDate, lang);
+  }, [lang, metadata?.shotDate]);
 
   const reverseData = reverseFetch.data ?? null;
   const accuracyMeters = useMemo(() => {
@@ -257,8 +206,6 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
     const accuracyLabel = accuracyMeters != null ? formatMeters(accuracyMeters, lang) : t('insightAccuracyUnknown');
     return t('insightLocationTitle', { accuracy: accuracyLabel });
   }, [coords, accuracyMeters, lang, t]);
-
-  const timezoneTitle = t('insightTimeTitle');
 
   const poiItems = useMemo(() => {
     if (!poiFetch.data) return [];
@@ -395,38 +342,18 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
       });
     }
 
-    if (localTimeDetails) {
-      const timezoneLabel = localTimeDetails.timezone
-        ? localContext.timezoneSource === 'approx'
-          ? t('insightTimeTimezoneApprox', { timezone: localTimeDetails.timezone })
-          : localTimeDetails.timezone
-        : t('insightTimeTimezoneUnknown');
-      const periodLabel = timePeriodLabel ?? t('dayPeriod_unknown');
-      const holidayText = localContext.holidayName
-        ? t('insightTimeHoliday', { holiday: localContext.holidayName })
-        : t('insightTimeNoHoliday');
+    if (shotTimeLabel) {
       list.push({
         id: 'time',
         severity: 'high',
-        title: timezoneTitle,
-        content: (
-          <div className="insight-content">
-            <p>
-              {t('insightTimeValue', {
-                date: localTimeDetails.formatted,
-                timezone: timezoneLabel,
-                period: periodLabel
-              })}
-            </p>
-            <p>{holidayText}</p>
-          </div>
-        )
+        title: t('insightTimeTitle'),
+        content: <p>{t('insightTimeValueSimple', { date: shotTimeLabel })}</p>
       });
     } else {
       list.push({
         id: 'time-missing',
         severity: 'medium',
-        title: timezoneTitle,
+        title: t('insightTimeTitle'),
         content: <p>{t('insightTimeMissing')}</p>
       });
     }
@@ -565,9 +492,7 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
     accuracyMeters,
     lang,
     locationTitle,
-    localTimeDetails,
-    localContext.holidayName,
-    timezoneTitle,
+    shotTimeLabel,
     metadata?.cameraMake,
     metadata?.cameraModel,
     software,
@@ -632,18 +557,6 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
       </ul>
 
       <div className="insight-errors">
-        {timezoneFetch.error ? (
-          <ErrorBanner
-            message={t('timezoneError')}
-            onRetry={() =>
-              coords &&
-              timestamp &&
-              timezoneFetch.request(
-                `/api/timezone-and-holiday?lat=${coords.lat}&lon=${coords.lon}&timestamp=${encodeURIComponent(timestamp)}`
-              )
-            }
-          />
-        ) : null}
         {reverseFetch.error ? (
           <ErrorBanner
             message={t('reverseError')}
@@ -684,23 +597,6 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
     </section>
   );
 };
-
-function isValidTimeZone(timezone?: string): timezone is string {
-  if (!timezone) return false;
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format();
-    return true;
-  } catch (error) {
-    console.warn('invalid-timezone', timezone, error);
-    return false;
-  }
-}
-
-function capitalize(value: string) {
-  if (!value) return value;
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
 const CATEGORY_KEYS: Record<string, MessageKey> = {
   cafe: 'poiCategory_cafe',
   restaurant: 'poiCategory_restaurant',

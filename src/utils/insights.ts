@@ -1,4 +1,4 @@
-import type { HistoricalWeatherResult, PoiResult, ReverseGeocodeResult, TimezoneHolidayResult } from '../types/api';
+import type { HistoricalWeatherResult, PoiResult, ReverseGeocodeResult } from '../types/api';
 import type { ManualCoordinates, StructuredMetadata } from '../types/metadata';
 
 type CameraPosition = 'front' | 'rear' | 'unknown';
@@ -103,42 +103,6 @@ export function summarizeSurveillance(pois: PoiResult[] | null | undefined): { c
   return { count: pois.length, nearest };
 }
 
-export function resolveLocalTime(
-  metadata: StructuredMetadata | null,
-  timezone: TimezoneHolidayResult | null,
-  coords: ManualCoordinates | null
-): { iso?: string; timezone?: string; holidayName?: string; holidayCode?: string; timezoneSource?: 'service' | 'approx' } {
-  if (timezone?.localTimeIso) {
-    return {
-      iso: timezone.localTimeIso,
-      timezone: timezone.timezone,
-      holidayName: timezone.holiday?.name,
-      holidayCode: timezone.holiday?.countryCode,
-      timezoneSource: 'service'
-    };
-  }
-  if (coords) {
-    const approx = approximateTimezoneFromCoords(coords.lon);
-    return {
-      iso: metadata?.shotDate ?? new Date().toISOString(),
-      timezone: approx,
-      timezoneSource: approx ? 'approx' : undefined
-    };
-  }
-  if (metadata?.shotDate) {
-    return { iso: metadata.shotDate, timezone: undefined };
-  }
-  return {};
-}
-
-export function describeDayPeriod(date: Date): 'night' | 'morning' | 'day' | 'evening' {
-  const hour = date.getHours();
-  if (hour >= 5 && hour < 12) return 'morning';
-  if (hour >= 12 && hour < 18) return 'day';
-  if (hour >= 18 && hour < 23) return 'evening';
-  return 'night';
-}
-
 export function summarizeWeather(weather: HistoricalWeatherResult | null | undefined) {
   if (!weather) return null;
   return {
@@ -193,12 +157,3 @@ function toNumber(value: unknown): number | undefined {
   return undefined;
 }
 
-function approximateTimezoneFromCoords(lon: number): string | undefined {
-  if (!Number.isFinite(lon)) return undefined;
-  const minutes = Math.max(-720, Math.min(840, Math.round(lon * 4))); // 1 degree ≈ 4 minutes offset
-  const sign = minutes >= 0 ? '+' : '-';
-  const absMinutes = Math.abs(minutes);
-  const hours = String(Math.floor(absMinutes / 60)).padStart(2, '0');
-  const mins = String(absMinutes % 60).padStart(2, '0');
-  return `UTC${sign}${hours}:${mins}`;
-}
