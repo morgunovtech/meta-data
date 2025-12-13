@@ -160,6 +160,7 @@ const App: React.FC = () => {
     loading: analysisLoading,
     error: analysisError,
     ocrStatus,
+    detectionStatus,
     detections,
     summary: analysisSummary
   } = useImageAnalysis(fileInfo);
@@ -627,6 +628,11 @@ const App: React.FC = () => {
               detections={detections}
               sceneDescription={sceneDescription}
               statusNote={ocrStatus ?? undefined}
+              progress={
+                analysisLoading && detectionStatus
+                  ? { label: detectionStatus.label, value: detectionStatus.progress }
+                  : null
+              }
             />
           </div>
           <MetadataPanel fileInfo={fileInfo} metadata={metadata} />

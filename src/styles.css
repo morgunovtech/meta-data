@@ -385,6 +385,32 @@ button {
   line-height: 1.5;
 }
 
+.progress-row {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0 0.5rem;
+}
+
+.progress-text {
+  font-size: 0.95rem;
+  color: var(--muted-strong);
+}
+
+.progress-bar {
+  position: relative;
+  height: 8px;
+  background: var(--border-subtle);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-bar span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #22d3ee, #2563eb);
+  transition: width 0.25s ease;
+}
+
 .preview-wrapper canvas,
 .preview-wrapper img {
   max-width: 100%;

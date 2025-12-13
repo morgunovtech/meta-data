@@ -101,6 +101,7 @@ export function useImageAnalysis(fileInfo: BasicFileInfo | null) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ocrStatus, setOcrStatus] = useState<string | null>(null);
+  const [detectionStatus, setDetectionStatus] = useState<{ label: string; progress: number } | null>(null);
   const [detections, setDetections] = useState<BoundingBox[]>([]);
   const [summary, setSummary] = useState<DetectionSummary | null>(null);
   const modelRef = useRef<any | null>(null);
@@ -112,6 +113,7 @@ export function useImageAnalysis(fileInfo: BasicFileInfo | null) {
     const reset = () => {
       setDetections([]);
       setSummary(null);
+      setDetectionStatus(null);
     };
 
     if (!fileInfo) {
@@ -160,17 +162,20 @@ export function useImageAnalysis(fileInfo: BasicFileInfo | null) {
       setLoading(true);
       setError(null);
       setOcrStatus(null);
+      setDetectionStatus({ label: t('detectionStagePrep'), progress: 0 });
       let decoded: DecodedSource | null = null;
       try {
         if (import.meta.env.DEV) {
           console.info('[pipeline] analyze:start');
         }
         if (!modelRef.current) {
+          setDetectionStatus({ label: t('detectionStageModel'), progress: 0.15 });
           modelRef.current = await loadModel();
           if (!modelRef.current && import.meta.env.DEV) {
             console.info('[pipeline] analyze:skip-detection (model unavailable)');
           }
         }
+        setDetectionStatus({ label: t('detectionStageDecode'), progress: 0.3 });
         decoded = await decodeForAnalysis(fileInfo);
         if (!decoded) {
           throw new Error('analysis-image');
@@ -187,6 +192,7 @@ export function useImageAnalysis(fileInfo: BasicFileInfo | null) {
           width: decoded.baseWidth,
           height: decoded.baseHeight
         });
+        setDetectionStatus({ label: t('detectionStageDetect'), progress: 0.55 });
         const handleOcrProgress = (message: { status: string; progress?: number }) => {
           if (cancelled) return;
           const percent = typeof message.progress === 'number' ? Math.round(message.progress * 100) : null;
@@ -209,6 +215,7 @@ export function useImageAnalysis(fileInfo: BasicFileInfo | null) {
           })
         ]);
         if (cancelled) return;
+        setDetectionStatus({ label: t('detectionStageProcess'), progress: 0.8 });
         const boxes: BoundingBox[] = predictions.map((pred: any) => ({
           x: pred.bbox[0] * scaledForDetection.scaleX,
           y: pred.bbox[1] * scaledForDetection.scaleY,
@@ -230,6 +237,7 @@ export function useImageAnalysis(fileInfo: BasicFileInfo | null) {
         }
         capabilityCheckedRef.current = true;
         setOcrStatus(null);
+        setDetectionStatus({ label: t('detectionStageDone'), progress: 1 });
       } catch (err) {
         console.error('analysis', err);
         if (!cancelled) {
@@ -257,6 +265,7 @@ export function useImageAnalysis(fileInfo: BasicFileInfo | null) {
     loading,
     error,
     ocrStatus,
+    detectionStatus,
     detections,
     summary
   };
