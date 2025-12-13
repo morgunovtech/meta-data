@@ -281,10 +281,8 @@ const App: React.FC = () => {
 
       const scaledMasks = manualMasks.map((mask) => ({
         ...mask,
-        x: mask.x * targetScale,
-        y: mask.y * targetScale,
-        width: mask.width * targetScale,
-        height: mask.height * targetScale
+        points: mask.points.map((pt) => ({ x: pt.x * targetScale, y: pt.y * targetScale })),
+        radius: mask.radius * targetScale
       }));
 
       if (blurFaces && scaledDetections.length > 0) {

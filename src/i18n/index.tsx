@@ -183,7 +183,7 @@ const messages = {
     manualMaskToggle: 'Закрыть область вручную',
     manualMaskHint:
       'Что это: вы выделяете то, что нужно спрятать (номер, документ, экран). Зачем: чтобы случайно не опубликовать чувствительную деталь.',
-    manualMaskDrawingHint: 'Режим масок включён: зажмите и проведите по изображению, чтобы выделить область.',
+    manualMaskDrawingHint: 'Режим кисти включён: зажмите и проведите по изображению, чтобы закрасить область.',
     manualMaskCount: 'Добавлено масок: {count}',
     manualMaskItem: 'Маска {index}',
     manualMaskRemove: 'Удалить',
@@ -432,7 +432,7 @@ const messages = {
       manualMaskToggle: 'Manual cover',
       manualMaskHint:
         'What: you select areas to cover (plate, document, screen). Why: prevents accidental exposure of sensitive details.',
-      manualMaskDrawingHint: 'Mask mode: drag over the image to mark a region.',
+      manualMaskDrawingHint: 'Brush mode is on: drag over the image to paint a region.',
       manualMaskCount: '{count} masks added',
       manualMaskItem: 'Mask {index}',
       manualMaskRemove: 'Remove',
@@ -683,7 +683,7 @@ const messages = {
       manualMaskToggle: 'Qo‘lda berkitish',
       manualMaskHint:
         'Nima: berkitiladigan joyni tanlaysiz (raqam, hujjat, ekran). Nega: maxfiy detal tasodifan chiqib ketmasin.',
-      manualMaskDrawingHint: 'Maska rejimi yoqilgan: rasm ustida chizib maydon belgilang.',
+      manualMaskDrawingHint: 'Bo‘yoq rejimi yoqilgan: rasm ustida chizib kerakli joyni bo‘yang.',
       manualMaskCount: 'Maskalar: {count}',
       manualMaskItem: 'Maska {index}',
       manualMaskRemove: 'O‘chirish',

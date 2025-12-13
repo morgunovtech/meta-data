@@ -1,9 +1,12 @@
-export interface ManualMask {
-  id: string;
+export interface ManualMaskPoint {
   x: number;
   y: number;
-  width: number;
-  height: number;
+}
+
+export interface ManualMask {
+  id: string;
+  points: ManualMaskPoint[];
+  radius: number;
 }
 
 export interface AntiSearchParams {

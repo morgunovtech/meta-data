@@ -329,6 +329,7 @@ button {
   gap: 0.35rem;
   width: 100%;
   height: 100%;
+  position: relative;
 }
 
 .drop-zone__hint {
@@ -351,14 +352,9 @@ button {
 
 .drop-zone__file {
   position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .preview-wrapper {
@@ -1008,7 +1004,6 @@ input[type='range'] {
 .cleanup-preview__overlay {
   position: absolute;
   inset: 0;
-  pointer-events: none;
 }
 
 .cleanup-preview__overlay.is-drawing {
@@ -1016,17 +1011,10 @@ input[type='range'] {
   cursor: crosshair;
 }
 
-.cleanup-preview__mask {
-  position: absolute;
-  border: 2px solid rgba(56, 189, 248, 0.9);
-  background: rgba(56, 189, 248, 0.18);
-  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.25);
-  border-radius: 6px;
-}
-
-.cleanup-preview__mask--draft {
-  border-style: dashed;
-  background: rgba(56, 189, 248, 0.1);
+.cleanup-preview__overlay-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .cleanup-mask-list {
