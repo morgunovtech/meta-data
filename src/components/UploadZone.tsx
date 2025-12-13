@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useId, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { useT } from '../i18n';
 import { ErrorBanner } from './ErrorBanner';
@@ -11,6 +11,7 @@ interface UploadZoneProps {
 
 export const UploadZone: React.FC<UploadZoneProps> = ({ loading, onFile, error }) => {
   const t = useT();
+  const uploadInputId = useId();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -59,26 +60,21 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ loading, onFile, error }
         onDragOver={(event) => event.preventDefault()}
         onDrop={handleDrop}
       >
-        <label className="drop-zone__label" htmlFor="upload-input">
+        <label className="drop-zone__label" htmlFor={uploadInputId} role="button" tabIndex={0}>
           <span className="sr-only">{t('uploadTitle')}</span>
-          <button
-            type="button"
-            className="button button--primary"
-            onClick={() => inputRef.current?.click()}
-            disabled={loading}
-          >
+          <span className="button button--primary" aria-live="polite">
             {loading ? '…' : t('uploadButton')}
-          </button>
+          </span>
           <p className="drop-zone__hint">{t('orDrop')}</p>
           <p className="drop-zone__subhint">{t('uploadFormats')}</p>
           <p className="drop-zone__support">{t('uploadFormatsSupport')}</p>
         </label>
         <input
-          id="upload-input"
+          id={uploadInputId}
           ref={inputRef}
           type="file"
           accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/bmp,image/heic,image/heif"
-          className="drop-zone__file"
+          className="drop-zone__file sr-only"
           aria-label={t('uploadButton')}
           onChange={(event) => handleFiles(event.target.files)}
         />
