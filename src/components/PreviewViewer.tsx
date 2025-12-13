@@ -7,7 +7,6 @@ interface PreviewViewerProps {
   fileInfo: BasicFileInfo;
   detections: BoundingBox[];
   sceneDescription: string;
-  statusNote?: string;
   progress?: { label: string; value: number } | null;
 }
 
@@ -15,7 +14,6 @@ export const PreviewViewer: React.FC<PreviewViewerProps> = ({
   fileInfo,
   detections,
   sceneDescription,
-  statusNote,
   progress
 }) => {
   const t = useT();
@@ -71,11 +69,6 @@ export const PreviewViewer: React.FC<PreviewViewerProps> = ({
             <span style={{ width: `${Math.min(100, Math.max(0, progress.value * 100))}%` }} />
           </div>
         </div>
-      ) : null}
-      {statusNote ? (
-        <p className="preview-description" aria-live="polite" style={{ color: '#38bdf8' }}>
-          {statusNote}
-        </p>
       ) : null}
       {fullScreen ? (
         <div className="fullscreen-viewer" onClick={() => setFullScreen(false)}>

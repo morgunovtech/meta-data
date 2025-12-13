@@ -15,7 +15,9 @@ export const MetadataPanel: React.FC<MetadataPanelProps> = ({ fileInfo, metadata
 
   const displayName = (fileInfo.originalName ?? fileInfo.file.name).replace(/\.[^/.]+$/, '');
   const displayMime = fileInfo.originalMimeType ?? fileInfo.mimeType;
+  const workingMime = fileInfo.mimeType;
   const { typeKey, format } = describeFileType(displayMime, fileInfo.originalName ?? fileInfo.file.name);
+  const workingFormat = describeFileType(workingMime, fileInfo.file.name).format;
   const typeLabel = t(typeKey as MessageKey);
   const orientationKey = metadata?.orientation
     ? `orientation${capitalize(metadata.orientation)}`
@@ -70,11 +72,13 @@ export const MetadataPanel: React.FC<MetadataPanelProps> = ({ fileInfo, metadata
     <aside className="panel" aria-label={t('basicInfoTitle')}>
       <h2 className="section-title">{t('basicInfoTitle')}</h2>
       <div className="metadata-grid">
-        <MetadataItem label={t('nameLabel')} value={displayName || fileInfo.file.name} />
+        <MetadataItem label={t('nameLabelSource')} value={fileInfo.originalName ?? fileInfo.file.name} />
+        <MetadataItem label={t('nameLabelWorking')} value={displayName || fileInfo.file.name} />
         <MetadataItem label={t('typeLabel')} value={typeLabel} />
-        <MetadataItem label={t('formatLabel')} value={format} />
+        <MetadataItem label={t('formatLabelSource')} value={format} />
+        <MetadataItem label={t('formatLabelWorking')} value={workingFormat} />
         <MetadataItem
-          label={t('sizeLabel')}
+          label={t('sizeLabelSource')}
           value={formatBytes(fileInfo.originalSizeBytes ?? fileInfo.sizeBytes)}
         />
         <MetadataItem label={t('resolutionLabel')} value={formatDimensions(fileInfo.width, fileInfo.height)} />
@@ -87,6 +91,7 @@ export const MetadataPanel: React.FC<MetadataPanelProps> = ({ fileInfo, metadata
       <div className="metadata-notes" aria-label={t('basicInfoNotesTitle')}>
         <p className="metadata-notes__title">{t('basicInfoNotesTitle')}</p>
         <ul>
+          {fileInfo.wasConverted ? <li>{t('basicInfoHeicNote')}</li> : null}
           {basicsNotes.map((note) => (
             <li key={note}>{note}</li>
           ))}

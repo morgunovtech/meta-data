@@ -100,7 +100,6 @@ export function useImageAnalysis(fileInfo: BasicFileInfo | null) {
   const t = useT();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [ocrStatus, setOcrStatus] = useState<string | null>(null);
   const [detectionStatus, setDetectionStatus] = useState<{ label: string; progress: number } | null>(null);
   const [detections, setDetections] = useState<BoundingBox[]>([]);
   const [summary, setSummary] = useState<DetectionSummary | null>(null);
@@ -161,7 +160,6 @@ export function useImageAnalysis(fileInfo: BasicFileInfo | null) {
     const detect = async () => {
       setLoading(true);
       setError(null);
-      setOcrStatus(null);
       setDetectionStatus({ label: t('detectionStagePrep'), progress: 0 });
       let decoded: DecodedSource | null = null;
       try {
@@ -197,11 +195,13 @@ export function useImageAnalysis(fileInfo: BasicFileInfo | null) {
           if (cancelled) return;
           const percent = typeof message.progress === 'number' ? Math.round(message.progress * 100) : null;
           const statusLabel = mapOcrStatus(message.status, t);
-          setOcrStatus(
-            percent !== null
-              ? t('ocrProgress', { status: statusLabel, progress: percent })
-              : t('ocrWorking', { status: statusLabel })
-          );
+          setDetectionStatus({
+            label:
+              percent !== null
+                ? t('ocrProgress', { status: statusLabel, progress: percent })
+                : t('ocrWorking', { status: statusLabel }),
+            progress: percent !== null ? Math.min(1, Math.max(0, percent / 100)) : 0.7
+          });
         };
         const [predictions, ocrResult] = await Promise.all([
           modelRef.current?.detect && scaledForDetection.canvas.width > 1 && scaledForDetection.canvas.height > 1
@@ -236,13 +236,11 @@ export function useImageAnalysis(fileInfo: BasicFileInfo | null) {
           });
         }
         capabilityCheckedRef.current = true;
-        setOcrStatus(null);
         setDetectionStatus({ label: t('detectionStageDone'), progress: 1 });
       } catch (err) {
         console.error('analysis', err);
         if (!cancelled) {
           setError(t('contentUnavailable'));
-          setOcrStatus(t('ocrUnavailable'));
           reset();
         }
       } finally {
@@ -264,7 +262,6 @@ export function useImageAnalysis(fileInfo: BasicFileInfo | null) {
   return {
     loading,
     error,
-    ocrStatus,
     detectionStatus,
     detections,
     summary

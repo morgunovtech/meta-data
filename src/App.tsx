@@ -156,14 +156,8 @@ const App: React.FC = () => {
   const { lang } = useI18n();
   const { fileInfo, error, loading, processFile } = useImageFile();
   const { metadata } = useExifMetadata(fileInfo);
-  const {
-    loading: analysisLoading,
-    error: analysisError,
-    ocrStatus,
-    detectionStatus,
-    detections,
-    summary: analysisSummary
-  } = useImageAnalysis(fileInfo);
+  const { loading: analysisLoading, error: analysisError, detectionStatus, detections, summary: analysisSummary } =
+    useImageAnalysis(fileInfo);
 
   type NoticeState = { type: 'success' | 'error'; message: string };
 
@@ -579,13 +573,13 @@ const App: React.FC = () => {
     renameFile
   ]);
 
-  const privacyLevel = useMemo(() => computePrivacyLevel(privacyScores.overall), [privacyScores.overall]);
-
   const sceneDescription = useMemo(() => {
     if (!analysisSummary) {
       if (analysisLoading) return t('sceneDescriptionLoading');
       if (analysisError) return t('sceneDescriptionUnavailable');
-      return t('sceneDescriptionEmpty');
+      return detections.length > 0
+        ? t('sceneDescriptionDetected', { items: t('previewObjectsFound', { count: detections.length }) })
+        : t('sceneDescriptionEmpty');
     }
     const segments: string[] = [];
     if (analysisSummary.people > 0) {
@@ -605,7 +599,7 @@ const App: React.FC = () => {
       return t('sceneDescriptionEmpty');
     }
     return t('sceneDescriptionDetected', { items: segments.join('; ') });
-  }, [analysisSummary, analysisLoading, analysisError, formatCountLabel, t]);
+  }, [analysisSummary, analysisLoading, analysisError, detections.length, formatCountLabel, t]);
 
   return (
     <div className="app-shell">
@@ -627,7 +621,6 @@ const App: React.FC = () => {
               fileInfo={fileInfo}
               detections={detections}
               sceneDescription={sceneDescription}
-              statusNote={ocrStatus ?? undefined}
               progress={
                 analysisLoading && detectionStatus
                   ? { label: detectionStatus.label, value: detectionStatus.progress }
