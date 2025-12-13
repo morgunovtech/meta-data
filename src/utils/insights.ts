@@ -1,5 +1,5 @@
 import type { HistoricalWeatherResult, PoiResult, ReverseGeocodeResult, TimezoneHolidayResult } from '../types/api';
-import type { StructuredMetadata } from '../types/metadata';
+import type { ManualCoordinates, StructuredMetadata } from '../types/metadata';
 
 type CameraPosition = 'front' | 'rear' | 'unknown';
 
@@ -105,14 +105,24 @@ export function summarizeSurveillance(pois: PoiResult[] | null | undefined): { c
 
 export function resolveLocalTime(
   metadata: StructuredMetadata | null,
-  timezone: TimezoneHolidayResult | null
-): { iso?: string; timezone?: string; holidayName?: string; holidayCode?: string } {
+  timezone: TimezoneHolidayResult | null,
+  coords: ManualCoordinates | null
+): { iso?: string; timezone?: string; holidayName?: string; holidayCode?: string; timezoneSource?: 'service' | 'approx' } {
   if (timezone?.localTimeIso) {
     return {
       iso: timezone.localTimeIso,
       timezone: timezone.timezone,
       holidayName: timezone.holiday?.name,
-      holidayCode: timezone.holiday?.countryCode
+      holidayCode: timezone.holiday?.countryCode,
+      timezoneSource: 'service'
+    };
+  }
+  if (coords) {
+    const approx = approximateTimezoneFromCoords(coords.lon);
+    return {
+      iso: metadata?.shotDate ?? new Date().toISOString(),
+      timezone: approx,
+      timezoneSource: approx ? 'approx' : undefined
     };
   }
   if (metadata?.shotDate) {
@@ -181,4 +191,14 @@ function toNumber(value: unknown): number | undefined {
     }
   }
   return undefined;
+}
+
+function approximateTimezoneFromCoords(lon: number): string | undefined {
+  if (!Number.isFinite(lon)) return undefined;
+  const minutes = Math.max(-720, Math.min(840, Math.round(lon * 4))); // 1 degree ≈ 4 minutes offset
+  const sign = minutes >= 0 ? '+' : '-';
+  const absMinutes = Math.abs(minutes);
+  const hours = String(Math.floor(absMinutes / 60)).padStart(2, '0');
+  const mins = String(absMinutes % 60).padStart(2, '0');
+  return `UTC${sign}${hours}:${mins}`;
 }

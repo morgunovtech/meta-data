@@ -4,7 +4,9 @@ import type { BasicFileInfo } from '../types/metadata';
 import type {
   CleanupPreviewDimensions,
   ManualMask,
+  PresetKey,
   PrivacyLevel,
+  PrivacyScores,
   QualityMode
 } from '../types/cleanup';
 import { useT } from '../i18n';
@@ -20,10 +22,12 @@ interface CleanupDownloadBlockProps {
   manualMaskMode: boolean;
   manualMasks: ManualMask[];
   antiSearchEnabled: boolean;
+  antiSearchLevel: number;
   reduceColor: boolean;
   watermark: boolean;
   prnuCleanup: boolean;
   privacyLevel: PrivacyLevel;
+  privacyScores: PrivacyScores;
   previewDimensions: CleanupPreviewDimensions | null;
   setRemoveMetadata: (value: boolean) => void;
   setBlurFaces: (value: boolean) => void;
@@ -34,9 +38,13 @@ interface CleanupDownloadBlockProps {
   onManualMaskAdd: (mask: Omit<ManualMask, 'id'>) => void;
   onManualMaskRemove: (id: string) => void;
   setAntiSearchEnabled: (value: boolean) => void;
+  setAntiSearchLevel: (value: number) => void;
   setReduceColor: (value: boolean) => void;
   setWatermark: (value: boolean) => void;
   setPrnuCleanup: (value: boolean) => void;
+  preset: PresetKey;
+  onPresetChange: (preset: PresetKey) => void;
+  onApplyRecommendation: () => void;
   onClean: () => Promise<void>;
   processing: boolean;
   previewDataUrl: string | null;
@@ -64,10 +72,12 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
   manualMaskMode,
   manualMasks,
   antiSearchEnabled,
+  antiSearchLevel,
   reduceColor,
   watermark,
   prnuCleanup,
   privacyLevel,
+  privacyScores,
   previewDimensions,
   setRemoveMetadata,
   setBlurFaces,
@@ -78,9 +88,13 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
   onManualMaskAdd,
   onManualMaskRemove,
   setAntiSearchEnabled,
+  setAntiSearchLevel,
   setReduceColor,
   setWatermark,
   setPrnuCleanup,
+  preset,
+  onPresetChange,
+  onApplyRecommendation,
   onClean,
   processing,
   previewDataUrl,
@@ -103,7 +117,7 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
       return formatBytes(estimatedSize);
     }
     if (fileInfo) {
-      return formatBytes(fileInfo.sizeBytes);
+      return formatBytes(fileInfo.originalSizeBytes ?? fileInfo.sizeBytes);
     }
     return t('emptyValue');
   }, [estimatedSize, fileInfo, t]);
@@ -279,6 +293,37 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
         <p className="cleanup-panel__hint">{t('cleanupHint')}</p>
       </div>
 
+      <div className="cleanup-presets">
+        <label className="cleanup-select">
+          <span>{t('presetLabel')}</span>
+          <select value={preset} onChange={(event) => onPresetChange(event.target.value as PresetKey)}>
+            <option value="none">{t('presetNone')}</option>
+            <option value="social">{t('presetSocial')}</option>
+            <option value="work">{t('presetWork')}</option>
+            <option value="proof">{t('presetProof')}</option>
+            <option value="personal">{t('presetPersonal')}</option>
+          </select>
+        </label>
+        <button type="button" className="button button--primary" onClick={onApplyRecommendation}>
+          {t('privacyOneClick')}
+        </button>
+      </div>
+
+      <div className="cleanup-quality">
+        <label className="cleanup-select">
+          <span>{t('qualityLabel')}</span>
+          <select value={qualityMode} onChange={(event) => setQualityMode(event.target.value as QualityMode)}>
+            <option value="low">{t('qualityMode_low')}</option>
+            <option value="medium">{t('qualityMode_medium')}</option>
+            <option value="original">{t('qualityMode_original')}</option>
+          </select>
+        </label>
+        <p className="cleanup-select__helper">{t('qualityHelper')}</p>
+        <span className="cleanup-select__meta">
+          {t('qualityPercentLabel', { percent: QUALITY_PERCENT[qualityMode] })} · {t('estimatedOutputSize', { size: estimatedLabel })}
+        </span>
+      </div>
+
       <div className="cleanup-options cleanup-options--grid">
         <label className="cleanup-checkbox">
           <input
@@ -353,27 +398,6 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
       {manualMaskMode ? <p className="cleanup-preview__hint">{t('manualMaskDrawingHint')}</p> : null}
 
       <div className="cleanup-control-row">
-        <fieldset className="quality-selector">
-          <legend>{t('qualityLabel')}</legend>
-          <div className="quality-selector__options">
-            {(['low', 'medium', 'original'] as QualityMode[]).map((mode) => (
-              <label key={mode} className={`quality-selector__option ${qualityMode === mode ? 'is-active' : ''}`}>
-                <input
-                  type="radio"
-                  name="quality-mode"
-                  value={mode}
-                  checked={qualityMode === mode}
-                  onChange={() => setQualityMode(mode)}
-                />
-                <span>{t(`qualityMode_${mode}` as const)}</span>
-              </label>
-            ))}
-          </div>
-          <span className="quality-selector__meta">
-            {t('qualityPercentLabel', { percent: QUALITY_PERCENT[qualityMode] })} ·{' '}
-            {t('estimatedOutputSize', { size: estimatedLabel })}
-          </span>
-        </fieldset>
         {(blurFaces || manualMasks.length > 0) && (
           <div className="range-line range-line--compact">
             <label htmlFor="blur-strength">{t('blurStrengthLabel')}</label>
@@ -396,6 +420,46 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
       ) : (
         <p className="notice notice--muted">{t('antiSearchOffHint')}</p>
       )}
+
+      {antiSearchEnabled ? (
+        <div className="range-line range-line--compact">
+          <label htmlFor="anti-search-level">{t('antiSearchLevelLabel')}</label>
+          <input
+            id="anti-search-level"
+            type="range"
+            min="1"
+            max="3"
+            step="1"
+            value={antiSearchLevel}
+            onChange={(event) => setAntiSearchLevel(Number(event.target.value))}
+          />
+          <span className="range-line__meta">{t('antiSearchLevelValue', { value: antiSearchLevel })}</span>
+        </div>
+      ) : null}
+
+      <div className="privacy-score">
+        <h3 className="cleanup-summary__title">{t('privacyScoreTitle', { score: privacyScores.overall })}</h3>
+        <ul className="privacy-score__list">
+          {privacyScores.categories.map((category) => (
+            <li key={category.id} className="privacy-score__item">
+              <div className="privacy-score__row">
+                <span>
+                  {t('privacyScoreRow', {
+                    label: t(`privacyScore_${category.id}` as const),
+                    score: category.score
+                  })}
+                </span>
+              </div>
+              <div className="privacy-score__bar" aria-hidden="true">
+                <div
+                  className="privacy-score__bar-fill"
+                  style={{ width: `${category.score}%` }}
+                />
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
 
       <div className="cleanup-diff-grid">
         <figure className="cleanup-diff-grid__preview">

@@ -10,9 +10,17 @@ import { ShockBlock } from './components/ShockBlock';
 import { CleanupDownloadBlock } from './components/CleanupDownloadBlock';
 import { useImageAnalysis } from './hooks/useImageAnalysis';
 import type { ManualCoordinates } from './types/metadata';
-import { useT } from './i18n';
+import { useI18n, useT } from './i18n';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
-import type { AntiSearchParams, CleanupPreviewDimensions, ManualMask, PrivacyLevel, QualityMode } from './types/cleanup';
+import type {
+  AntiSearchParams,
+  CleanupPreviewDimensions,
+  ManualMask,
+  PresetKey,
+  PrivacyLevel,
+  PrivacyScores,
+  QualityMode
+} from './types/cleanup';
 import {
   applyAntiSearch,
   applyColorReduction,
@@ -43,6 +51,66 @@ async function loadImageElement(src: string): Promise<HTMLImageElement> {
 }
 
 const blurDefault = 28;
+const PREVIEW_MAX_DIMENSION = 2400;
+
+const RU_PLURAL_RANGE = { few: [2, 3, 4], many: [0, 5, 6, 7, 8, 9] };
+
+const presetConfig: Record<Exclude<PresetKey, 'none'>, {
+  removeMetadata: boolean;
+  blurFaces: boolean;
+  antiSearchEnabled: boolean;
+  antiSearchLevel: number;
+  reduceColor: boolean;
+  watermark: boolean;
+  prnuCleanup: boolean;
+  qualityMode: QualityMode;
+  renameFile: boolean;
+}> = {
+  social: {
+    removeMetadata: true,
+    blurFaces: true,
+    antiSearchEnabled: true,
+    antiSearchLevel: 2,
+    reduceColor: false,
+    watermark: true,
+    prnuCleanup: true,
+    qualityMode: 'medium',
+    renameFile: true
+  },
+  work: {
+    removeMetadata: true,
+    blurFaces: false,
+    antiSearchEnabled: true,
+    antiSearchLevel: 1,
+    reduceColor: false,
+    watermark: false,
+    prnuCleanup: false,
+    qualityMode: 'medium',
+    renameFile: true
+  },
+  proof: {
+    removeMetadata: true,
+    blurFaces: false,
+    antiSearchEnabled: false,
+    antiSearchLevel: 1,
+    reduceColor: false,
+    watermark: false,
+    prnuCleanup: false,
+    qualityMode: 'original',
+    renameFile: false
+  },
+  personal: {
+    removeMetadata: true,
+    blurFaces: true,
+    antiSearchEnabled: true,
+    antiSearchLevel: 2,
+    reduceColor: false,
+    watermark: false,
+    prnuCleanup: true,
+    qualityMode: 'medium',
+    renameFile: true
+  }
+};
 
 function qualityForMode(mode: QualityMode): number {
   switch (mode) {
@@ -62,10 +130,10 @@ function createAnonymisedName(extension: string): string {
 }
 
 function computePrivacyLevel(score: number): PrivacyLevel {
-  if (score >= 6) {
+  if (score >= 75) {
     return 'high';
   }
-  if (score >= 3) {
+  if (score >= 45) {
     return 'medium';
   }
   return 'low';
@@ -78,16 +146,24 @@ function estimateDataUrlBytes(dataUrl: string): number {
   return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
 }
 
+function scoreFromRisk(risk: number): number {
+  const bounded = Math.min(1, Math.max(0, risk));
+  return Math.round((1 - bounded) * 100);
+}
+
 const App: React.FC = () => {
   const t = useT();
+  const { lang } = useI18n();
   const { fileInfo, error, loading, processFile } = useImageFile();
   const { metadata } = useExifMetadata(fileInfo);
   const {
     loading: analysisLoading,
     error: analysisError,
+    ocrStatus,
+    detectionStatus,
     detections,
     summary: analysisSummary
-  } = useImageAnalysis(fileInfo?.dataUrl ?? null);
+  } = useImageAnalysis(fileInfo);
 
   type NoticeState = { type: 'success' | 'error'; message: string };
 
@@ -100,16 +176,42 @@ const App: React.FC = () => {
   const [manualMaskMode, setManualMaskMode] = useState(false);
   const [manualMasks, setManualMasks] = useState<ManualMask[]>([]);
   const [antiSearchEnabled, setAntiSearchEnabled] = useState(false);
+  const [antiSearchLevel, setAntiSearchLevel] = useState(2);
   const [antiSearchParams, setAntiSearchParams] = useState<AntiSearchParams | null>(null);
   const [reduceColor, setReduceColor] = useState(false);
   const [watermark, setWatermark] = useState(false);
   const [prnuCleanup, setPrnuCleanup] = useState(false);
+  const [preset, setPreset] = useState<PresetKey>('none');
   const [processing, setProcessing] = useState(false);
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [estimatedSize, setEstimatedSize] = useState<number | null>(null);
   const [previewDimensions, setPreviewDimensions] = useState<CleanupPreviewDimensions | null>(null);
+
+  const formatCountLabel = useCallback(
+    (count: number, kind: 'person' | 'vehicle' | 'animal') => {
+      const base =
+        kind === 'person' ? 'nounPerson' : kind === 'vehicle' ? 'nounVehicle' : 'nounAnimal';
+      if (lang === 'ru') {
+        const mod10 = count % 10;
+        const mod100 = count % 100;
+        const form =
+          mod10 === 1 && mod100 !== 11
+            ? 'One'
+            : RU_PLURAL_RANGE.few.includes(mod10) && ![12, 13, 14].includes(mod100)
+            ? 'Few'
+            : 'Many';
+        return `${count} ${t(`${base}${form}` as const)}`;
+      }
+      if (lang === 'uz') {
+        return `${count} ta ${t(`${base}One` as const)}`;
+      }
+      const form = count === 1 ? 'One' : 'Many';
+      return `${count} ${t(`${base}${form}` as const)}`;
+    },
+    [lang, t]
+  );
 
   const personDetections = useMemo(
     () => detections.filter((det) => det.label === 'person'),
@@ -118,11 +220,40 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (antiSearchEnabled) {
-      setAntiSearchParams(generateAntiSearchParams({ level: 3 }));
+      setAntiSearchParams(generateAntiSearchParams({ level: antiSearchLevel }));
     } else {
       setAntiSearchParams(null);
     }
-  }, [antiSearchEnabled]);
+  }, [antiSearchEnabled, antiSearchLevel]);
+
+  useEffect(() => {
+    if (preset === 'none') return;
+    const config = presetConfig[preset];
+    if (
+      config.removeMetadata !== removeMetadata ||
+      config.blurFaces !== blurFaces ||
+      config.antiSearchEnabled !== antiSearchEnabled ||
+      config.antiSearchLevel !== antiSearchLevel ||
+      config.reduceColor !== reduceColor ||
+      config.watermark !== watermark ||
+      config.prnuCleanup !== prnuCleanup ||
+      config.qualityMode !== qualityMode ||
+      config.renameFile !== renameFile
+    ) {
+      setPreset('none');
+    }
+  }, [
+    antiSearchEnabled,
+    antiSearchLevel,
+    blurFaces,
+    preset,
+    prnuCleanup,
+    qualityMode,
+    reduceColor,
+    removeMetadata,
+    renameFile,
+    watermark
+  ]);
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -140,66 +271,93 @@ const App: React.FC = () => {
       setManualMaskMode(false);
       setAntiSearchEnabled(false);
       setAntiSearchParams(null);
+      setAntiSearchLevel(2);
       setReduceColor(false);
       setWatermark(false);
       setPrnuCleanup(false);
+      setPreset('none');
       setPreviewDimensions(null);
       await processFile(file);
     },
     [processFile]
   );
 
-  const createProcessedCanvas = useCallback(async () => {
-    if (!fileInfo) return null;
-    const image = await loadImageElement(fileInfo.dataUrl);
-    const baseCanvas = document.createElement('canvas');
-    baseCanvas.width = fileInfo.width;
-    baseCanvas.height = fileInfo.height;
-    const ctx = baseCanvas.getContext('2d');
-    if (!ctx) {
-      throw new Error('canvas');
-    }
-    ctx.drawImage(image, 0, 0, baseCanvas.width, baseCanvas.height);
+  const createProcessedCanvas = useCallback(
+    async (options?: { maxDimension?: number }) => {
+      if (!fileInfo) return null;
+      const longest = Math.max(fileInfo.width, fileInfo.height) || 1;
+      const targetScale = options?.maxDimension ? Math.min(1, options.maxDimension / longest) : 1;
+      const targetWidth = Math.max(1, Math.round(fileInfo.width * targetScale));
+      const targetHeight = Math.max(1, Math.round(fileInfo.height * targetScale));
 
-    if (blurFaces && personDetections.length > 0) {
-      blurDetections(ctx, image, personDetections, blurStrength);
-    }
+      const image = await loadImageElement(fileInfo.dataUrl);
+      const baseCanvas = document.createElement('canvas');
+      baseCanvas.width = targetWidth;
+      baseCanvas.height = targetHeight;
+      const ctx = baseCanvas.getContext('2d');
+      if (!ctx) {
+        throw new Error('canvas');
+      }
+      ctx.drawImage(image, 0, 0, targetWidth, targetHeight);
 
-    if (manualMasks.length > 0) {
-      blurManualMasks(ctx, image, manualMasks, blurStrength);
-    }
+      const scaledDetections = personDetections.map((det) => ({
+        ...det,
+        x: det.x * targetScale,
+        y: det.y * targetScale,
+        width: det.width * targetScale,
+        height: det.height * targetScale
+      }));
 
-    let workingCanvas = baseCanvas;
+      const scaledMasks = manualMasks.map((mask) => ({
+        ...mask,
+        x: mask.x * targetScale,
+        y: mask.y * targetScale,
+        width: mask.width * targetScale,
+        height: mask.height * targetScale
+      }));
 
-    if (prnuCleanup) {
-      workingCanvas = applyPrnuCleanup(workingCanvas);
-    }
+      if (blurFaces && scaledDetections.length > 0) {
+        blurDetections(ctx, baseCanvas, scaledDetections, blurStrength);
+      }
 
-    if (antiSearchEnabled && antiSearchParams) {
-      workingCanvas = applyAntiSearch(workingCanvas, antiSearchParams);
-    }
+      if (scaledMasks.length > 0) {
+        blurManualMasks(ctx, baseCanvas, scaledMasks, blurStrength);
+      }
 
-    if (reduceColor) {
-      workingCanvas = applyColorReduction(workingCanvas);
-    }
+      let workingCanvas = baseCanvas;
 
-    if (watermark) {
-      workingCanvas = applyWatermark(workingCanvas, t('watermarkText'));
-    }
+      if (prnuCleanup) {
+        workingCanvas = applyPrnuCleanup(workingCanvas);
+      }
 
-    return workingCanvas;
-  }, [
-    fileInfo,
-    blurFaces,
-    personDetections,
-    blurStrength,
-    manualMasks,
-    antiSearchEnabled,
-    antiSearchParams,
-    reduceColor,
-    watermark,
-    t
-  ]);
+      if (antiSearchEnabled && antiSearchParams) {
+        workingCanvas = applyAntiSearch(workingCanvas, antiSearchParams);
+      }
+
+      if (reduceColor) {
+        workingCanvas = applyColorReduction(workingCanvas);
+      }
+
+      if (watermark) {
+        workingCanvas = applyWatermark(workingCanvas, t('watermarkText'));
+      }
+
+      return workingCanvas;
+    },
+    [
+      fileInfo,
+      blurFaces,
+      personDetections,
+      blurStrength,
+      manualMasks,
+      antiSearchEnabled,
+      antiSearchParams,
+      reduceColor,
+      watermark,
+      prnuCleanup,
+      t
+    ]
+  );
 
   const handleDownload = useCallback(async () => {
     if (!fileInfo) {
@@ -208,6 +366,9 @@ const App: React.FC = () => {
     setProcessing(true);
     setNotice(null);
     try {
+      if (import.meta.env.DEV) {
+        console.info('[pipeline] export:start', { mime: fileInfo.mimeType, qualityMode });
+      }
       const canvas = await createProcessedCanvas();
       if (!canvas) {
         throw new Error('no-canvas');
@@ -236,7 +397,8 @@ const App: React.FC = () => {
 
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      const fallbackName = `${fileInfo.file.name.replace(/\.[^/.]+$/, '')}.cleaned.${extension}`;
+      const baseName = (fileInfo.originalName ?? fileInfo.file.name).replace(/\.[^/.]+$/, '');
+      const fallbackName = `${baseName}.cleaned.${extension}`;
       link.download = renameFile ? createAnonymisedName(extension) : fallbackName;
       document.body.appendChild(link);
       link.click();
@@ -245,6 +407,9 @@ const App: React.FC = () => {
         document.body.removeChild(link);
       }, 2000);
       setNotice({ type: 'success', message: t('downloadReady') });
+      if (import.meta.env.DEV) {
+        console.info('[pipeline] export:done');
+      }
     } catch (err) {
       console.error(err);
       setNotice({ type: 'error', message: t('cleanupFailed') });
@@ -263,7 +428,9 @@ const App: React.FC = () => {
     }
     let cancelled = false;
     setPreviewLoading(true);
-    createProcessedCanvas()
+    const longestSide = Math.max(fileInfo.width, fileInfo.height) || 1;
+    const previewScale = Math.min(1, PREVIEW_MAX_DIMENSION / longestSide);
+    createProcessedCanvas({ maxDimension: PREVIEW_MAX_DIMENSION })
       .then((canvas) => {
         if (!canvas || cancelled) {
           return;
@@ -274,7 +441,10 @@ const App: React.FC = () => {
         if (!cancelled) {
           setPreviewDataUrl(dataUrl);
           setEstimatedSize(estimateDataUrlBytes(dataUrl));
-          setPreviewDimensions({ width: canvas.width, height: canvas.height });
+          setPreviewDimensions({
+            width: Math.round(canvas.width / previewScale),
+            height: Math.round(canvas.height / previewScale)
+          });
         }
       })
       .catch((err) => {
@@ -319,33 +489,97 @@ const App: React.FC = () => {
     setManualMasks((current) => current.filter((mask) => mask.id !== id));
   }, []);
 
+  const applyPreset = useCallback(
+    (key: PresetKey) => {
+      setPreset(key);
+      if (key === 'none') return;
+      const config = presetConfig[key];
+      setRemoveMetadata(config.removeMetadata);
+      setBlurFaces(config.blurFaces);
+      setAntiSearchEnabled(config.antiSearchEnabled);
+      setAntiSearchLevel(config.antiSearchLevel);
+      setReduceColor(config.reduceColor);
+      setWatermark(config.watermark);
+      setPrnuCleanup(config.prnuCleanup);
+      setQualityMode(config.qualityMode);
+      setRenameFile(config.renameFile);
+    },
+    []
+  );
 
-  const privacyScore = useMemo(() => {
-    let score = 0;
-    if (removeMetadata) score += 2;
-    if (blurFaces && personDetections.length > 0) score += 2;
-    if (manualMasks.length > 0) score += 2;
-    if (antiSearchEnabled) score += 3;
-    if (renameFile) score += 1;
-    if (reduceColor) score += 1;
-    if (watermark) score += 0.5;
-    if (prnuCleanup) score += 1.5;
-    if (qualityMode !== 'original') score += 1;
-    return score;
+  const applySafetyRecommendations = useCallback(() => {
+    setPreset('none');
+    setRemoveMetadata(true);
+    setRenameFile(true);
+    if (personDetections.length > 0) {
+      setBlurFaces(true);
+    }
+    setAntiSearchEnabled(true);
+    setAntiSearchLevel((current) => Math.max(2, current));
+    setPrnuCleanup(true);
+  }, [personDetections.length]);
+
+
+  const privacyScores = useMemo<PrivacyScores>(() => {
+    const hasGps = Boolean(metadata?.gps);
+    const hasTime = Boolean(metadata?.shotDate);
+    const hasFaces = personDetections.length > 0;
+    const hasText = Boolean(analysisSummary?.ocrTexts && analysisSummary.ocrTexts.length > 0);
+    const hasDevice = Boolean(metadata?.cameraMake || metadata?.cameraModel || metadata?.lensModel || metadata?.software);
+
+    const locationRisk = hasGps ? 0.7 : 0.2;
+    const timeRisk = hasTime ? 0.45 : 0.15;
+    const idRisk = hasFaces || hasText ? 0.65 : 0.25;
+    const deviceRisk = hasDevice ? 0.55 : 0.2;
+    const searchRisk = 0.5;
+
+    const categories = [
+      {
+        id: 'location' as const,
+        score: scoreFromRisk(locationRisk * (removeMetadata ? 0.35 : 1))
+      },
+      {
+        id: 'time' as const,
+        score: scoreFromRisk(timeRisk * (removeMetadata ? 0.4 : 1))
+      },
+      {
+        id: 'identification' as const,
+        score: scoreFromRisk(
+          idRisk * (blurFaces || manualMasks.length > 0 ? 0.35 : 1) * (antiSearchEnabled ? 0.8 : 1)
+        )
+      },
+      {
+        id: 'device' as const,
+        score: scoreFromRisk(deviceRisk * (removeMetadata ? 0.45 : 1) * (renameFile ? 0.8 : 1))
+      },
+      {
+        id: 'search' as const,
+        score: scoreFromRisk(searchRisk * (antiSearchEnabled ? 0.35 : 1) * (prnuCleanup ? 0.85 : 1))
+      }
+    ];
+
+    const overall = Math.round(
+      categories.reduce((acc, item) => acc + item.score, 0) / (categories.length || 1)
+    );
+
+    return { overall, categories };
   }, [
-    removeMetadata,
-    blurFaces,
-    personDetections.length,
-    manualMasks.length,
+    analysisSummary?.ocrTexts,
     antiSearchEnabled,
-    renameFile,
-    reduceColor,
-    watermark,
+    manualMasks.length,
+    metadata?.cameraMake,
+    metadata?.cameraModel,
+    metadata?.gps,
+    metadata?.lensModel,
+    metadata?.software,
+    metadata?.shotDate,
+    personDetections.length,
     prnuCleanup,
-    qualityMode
+    removeMetadata,
+    renameFile
   ]);
 
-  const privacyLevel = useMemo(() => computePrivacyLevel(privacyScore), [privacyScore]);
+  const privacyLevel = useMemo(() => computePrivacyLevel(privacyScores.overall), [privacyScores.overall]);
 
   const sceneDescription = useMemo(() => {
     if (!analysisSummary) {
@@ -355,13 +589,13 @@ const App: React.FC = () => {
     }
     const segments: string[] = [];
     if (analysisSummary.people > 0) {
-      segments.push(t('sceneDescriptionPeople', { count: analysisSummary.people }));
+      segments.push(formatCountLabel(analysisSummary.people, 'person'));
     }
     if (analysisSummary.vehicles > 0) {
-      segments.push(t('sceneDescriptionVehicles', { count: analysisSummary.vehicles }));
+      segments.push(formatCountLabel(analysisSummary.vehicles, 'vehicle'));
     }
     if (analysisSummary.animals > 0) {
-      segments.push(t('sceneDescriptionAnimals', { count: analysisSummary.animals }));
+      segments.push(formatCountLabel(analysisSummary.animals, 'animal'));
     }
     if (analysisSummary.ocrTexts && analysisSummary.ocrTexts.length > 0) {
       const joined = analysisSummary.ocrTexts.slice(0, 3).join(' • ');
@@ -371,7 +605,7 @@ const App: React.FC = () => {
       return t('sceneDescriptionEmpty');
     }
     return t('sceneDescriptionDetected', { items: segments.join('; ') });
-  }, [analysisSummary, analysisLoading, analysisError, t]);
+  }, [analysisSummary, analysisLoading, analysisError, formatCountLabel, t]);
 
   return (
     <div className="app-shell">
@@ -389,7 +623,17 @@ const App: React.FC = () => {
       {fileInfo ? (
         <div className="grid-two-column">
           <div className="panel">
-            <PreviewViewer fileInfo={fileInfo} detections={detections} sceneDescription={sceneDescription} />
+            <PreviewViewer
+              fileInfo={fileInfo}
+              detections={detections}
+              sceneDescription={sceneDescription}
+              statusNote={ocrStatus ?? undefined}
+              progress={
+                analysisLoading && detectionStatus
+                  ? { label: detectionStatus.label, value: detectionStatus.progress }
+                  : null
+              }
+            />
           </div>
           <MetadataPanel fileInfo={fileInfo} metadata={metadata} />
         </div>
@@ -428,9 +672,15 @@ const App: React.FC = () => {
         onManualMaskAdd={handleManualMaskAdd}
         onManualMaskRemove={handleManualMaskRemove}
         setAntiSearchEnabled={setAntiSearchEnabled}
+        antiSearchLevel={antiSearchLevel}
+        setAntiSearchLevel={setAntiSearchLevel}
         setReduceColor={setReduceColor}
         setWatermark={setWatermark}
         setPrnuCleanup={setPrnuCleanup}
+        preset={preset}
+        onPresetChange={applyPreset}
+        privacyScores={privacyScores}
+        onApplyRecommendation={applySafetyRecommendations}
         onClean={handleDownload}
         processing={processing}
         previewDataUrl={previewDataUrl}
