@@ -318,6 +318,7 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
             <option value="original">{t('qualityMode_original')}</option>
           </select>
         </label>
+        <p className="cleanup-select__helper">{t('qualityHelper')}</p>
         <span className="cleanup-select__meta">
           {t('qualityPercentLabel', { percent: QUALITY_PERCENT[qualityMode] })} · {t('estimatedOutputSize', { size: estimatedLabel })}
         </span>
@@ -442,8 +443,12 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
           {privacyScores.categories.map((category) => (
             <li key={category.id} className="privacy-score__item">
               <div className="privacy-score__row">
-                <span>{t(`privacyScore_${category.id}` as const)}</span>
-                <span>{category.score}</span>
+                <span>
+                  {t('privacyScoreRow', {
+                    label: t(`privacyScore_${category.id}` as const),
+                    score: category.score
+                  })}
+                </span>
               </div>
               <div className="privacy-score__bar" aria-hidden="true">
                 <div

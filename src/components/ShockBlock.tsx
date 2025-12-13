@@ -588,6 +588,7 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
   return (
     <section className="panel insights-panel">
       <h2 className="section-title">{t('shockBlockTitle')}</h2>
+      <p className="panel__hint">{t('insightDisclaimer')}</p>
 
       {!metadata?.gps && !manualCoords ? (
         <div className="manual-coords">
