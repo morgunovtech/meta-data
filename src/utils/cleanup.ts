@@ -9,6 +9,7 @@ interface BlurRegion {
 }
 
 const MIN_MASK_SIZE = 12;
+const MIN_MASK_POINTS = 2;
 
 function clampRect(rect: BlurRegion, maxWidth: number, maxHeight: number): BlurRegion | null {
   const x = Math.max(0, Math.min(rect.x, maxWidth));
@@ -70,29 +71,46 @@ export function blurManualMasks(
   masks: ManualMask[],
   strength: number
 ) {
+  if (masks.length === 0) return;
+
   masks.forEach((mask) => {
-    const clamped = clampRect(mask, ctx.canvas.width, ctx.canvas.height);
-    if (!clamped) {
+    if (mask.points.length < MIN_MASK_POINTS) {
       return;
     }
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(clamped.x, clamped.y, clamped.width, clamped.height);
-    ctx.clip();
-    ctx.filter = `blur(${Math.round(strength)}px)`;
-    ctx.drawImage(
-      source,
-      clamped.x,
-      clamped.y,
-      clamped.width,
-      clamped.height,
-      clamped.x,
-      clamped.y,
-      clamped.width,
-      clamped.height
-    );
-    ctx.filter = 'none';
-    ctx.restore();
+
+    const maskCanvas = document.createElement('canvas');
+    maskCanvas.width = ctx.canvas.width;
+    maskCanvas.height = ctx.canvas.height;
+    const maskCtx = maskCanvas.getContext('2d');
+    if (!maskCtx) return;
+
+    const radius = Math.max(mask.radius, MIN_MASK_SIZE / 2);
+    maskCtx.lineWidth = radius * 2;
+    maskCtx.lineJoin = 'round';
+    maskCtx.lineCap = 'round';
+    maskCtx.strokeStyle = 'white';
+
+    maskCtx.beginPath();
+    maskCtx.moveTo(mask.points[0].x, mask.points[0].y);
+    for (let i = 1; i < mask.points.length; i += 1) {
+      const pt = mask.points[i];
+      maskCtx.lineTo(pt.x, pt.y);
+    }
+    maskCtx.stroke();
+
+    const blurLayer = document.createElement('canvas');
+    blurLayer.width = ctx.canvas.width;
+    blurLayer.height = ctx.canvas.height;
+    const blurCtx = blurLayer.getContext('2d');
+    if (!blurCtx) return;
+
+    blurCtx.filter = `blur(${Math.round(strength)}px)`;
+    blurCtx.drawImage(source, 0, 0, ctx.canvas.width, ctx.canvas.height);
+    blurCtx.filter = 'none';
+    blurCtx.globalCompositeOperation = 'destination-in';
+    blurCtx.drawImage(maskCanvas, 0, 0);
+
+    ctx.drawImage(blurLayer, 0, 0);
   });
 }
 
@@ -355,6 +373,7 @@ export function applyWatermark(
   const fontSize = Math.max(16, Math.round(canvas.width * 0.025));
   ctx.save();
   ctx.font = `600 ${fontSize}px 'Inter', 'Segoe UI', sans-serif`;
+  ctx.textAlign = 'right';
   ctx.textBaseline = 'bottom';
   const margin = Math.max(12, Math.round(canvas.width * 0.02));
   const x = canvas.width - margin;

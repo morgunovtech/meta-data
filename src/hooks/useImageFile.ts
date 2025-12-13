@@ -1,23 +1,32 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n';
 import type { BasicFileInfo } from '../types/metadata';
+import { decodeHeicToJpegForPreview } from '../utils/heic';
 
 const MAX_SIZE_BYTES = 20 * 1024 * 1024;
-const SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_PIXEL_COUNT = 40_000_000; // guard overly large resolution that may crash canvases
+const NATIVE_SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif', 'image/bmp'];
+const HEIC_TYPES = ['image/heic', 'image/heif'];
+const SUPPORTED_TYPES = [...NATIVE_SUPPORTED_TYPES, ...HEIC_TYPES];
 
-async function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('read-error'));
-    reader.onload = () => {
-      resolve(reader.result as string);
-    };
-    reader.readAsDataURL(file);
-  });
+function inferMimeFromName(name: string): string | null {
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.heic') || lower.endsWith('.heif')) return 'image/heic';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.avif')) return 'image/avif';
+  if (lower.endsWith('.gif')) return 'image/gif';
+  if (lower.endsWith('.bmp')) return 'image/bmp';
+  return null;
 }
 
-async function makeThumbnail(dataUrl: string, maxSize = 720): Promise<{ url: string; width: number; height: number }> {
+async function makeThumbnail(
+  dataUrl: string,
+  maxSize = 720
+): Promise<{ url: string; width: number; height: number }> {
   const image = new Image();
+  image.decoding = 'async';
   image.src = dataUrl;
   await new Promise((resolve, reject) => {
     image.onload = resolve;
@@ -42,52 +51,100 @@ export function useImageFile() {
   const [fileInfo, setFileInfo] = useState<BasicFileInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const objectUrlRef = useRef<string | null>(null);
+
+  const revokeObjectUrl = useCallback(() => {
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => revokeObjectUrl, [revokeObjectUrl]);
 
   const reset = useCallback(() => {
     setFileInfo(null);
     setError(null);
-  }, []);
+    revokeObjectUrl();
+  }, [revokeObjectUrl]);
 
   const processFile = useCallback(
     async (file: File) => {
       setLoading(true);
       setError(null);
+      revokeObjectUrl();
+      if (import.meta.env.DEV) {
+        console.info('[pipeline] upload:start', { name: file.name, type: file.type, size: file.size });
+      }
+      const inferredType = file.type || inferMimeFromName(file.name) || '';
       try {
         if (file.size > MAX_SIZE_BYTES) {
           setError(t('fileTooLarge', { limit: 20 }));
           setLoading(false);
           return;
         }
-        if (!SUPPORTED_TYPES.includes(file.type)) {
-          if (file.name.toLowerCase().endsWith('.heic')) {
-            setError(t('unsupportedHeic'));
-          } else {
-            setError(t('unsupportedFormat'));
-          }
+        if (!SUPPORTED_TYPES.includes(inferredType)) {
+          setError(t('unsupportedFormat'));
           setLoading(false);
           return;
         }
-        const dataUrl = await fileToDataUrl(file);
-        const { url: thumbnailUrl, width, height } = await makeThumbnail(dataUrl);
+
+        const needsHeicConversion = HEIC_TYPES.includes(inferredType);
+        const sourceFile = file;
+        const heicDecoded = needsHeicConversion ? await decodeHeicToJpegForPreview(file) : null;
+        const workingFile = heicDecoded?.file ?? file;
+        const mimeType = workingFile.type || inferredType || 'image/jpeg';
+        const objectUrl = URL.createObjectURL(workingFile);
+        objectUrlRef.current = objectUrl;
+        const { url: thumbnailUrl, width, height } = await makeThumbnail(objectUrl);
+        const pixelCount = width * height;
+        if (pixelCount > MAX_PIXEL_COUNT) {
+          setError(t('fileTooLargeResolution'));
+          setLoading(false);
+          return;
+        }
         const info: BasicFileInfo = {
-          file,
-          dataUrl,
+          file: workingFile,
+          dataUrl: objectUrl,
           thumbnailUrl,
           width,
           height,
           aspectRatio: width / height,
-          sizeBytes: file.size,
-          mimeType: file.type
+          sizeBytes: needsHeicConversion ? sourceFile.size : workingFile.size,
+          mimeType,
+          originalFile: needsHeicConversion ? sourceFile : undefined,
+          originalMimeType: needsHeicConversion ? sourceFile.type : undefined,
+          originalSizeBytes: needsHeicConversion ? sourceFile.size : undefined,
+          originalName: needsHeicConversion ? sourceFile.name : undefined,
+          originalWidth: heicDecoded?.width,
+          originalHeight: heicDecoded?.height,
+          processedSizeBytes: workingFile.size,
+          wasConverted: needsHeicConversion
         };
         setFileInfo(info);
+        if (import.meta.env.DEV) {
+          console.info('[pipeline] upload:ready', {
+            width,
+            height,
+            mime: workingFile.type,
+            converted: needsHeicConversion
+          });
+        }
       } catch (err) {
         console.error('file-processing', err);
-        setError(t('corruptedFile'));
+        if (HEIC_TYPES.includes(inferredType)) {
+          setError(t('heicConversionFailed'));
+        } else if (inferredType === 'image/avif') {
+          setError(t('browserFormatUnsupported'));
+        } else {
+          setError(t('corruptedFile'));
+        }
+        revokeObjectUrl();
       } finally {
         setLoading(false);
       }
     },
-    [t]
+    [revokeObjectUrl, t]
   );
 
   return {
