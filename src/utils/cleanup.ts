@@ -355,6 +355,7 @@ export function applyWatermark(
   const fontSize = Math.max(16, Math.round(canvas.width * 0.025));
   ctx.save();
   ctx.font = `600 ${fontSize}px 'Inter', 'Segoe UI', sans-serif`;
+  ctx.textAlign = 'right';
   ctx.textBaseline = 'bottom';
   const margin = Math.max(12, Math.round(canvas.width * 0.02));
   const x = canvas.width - margin;

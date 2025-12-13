@@ -33,6 +33,7 @@ export async function onRequest({ request }: PagesEventContext): Promise<Respons
     }
     const timezoneData = await timezoneRes.json<any>();
     const timezone = timezoneData.timezone as string | undefined;
+    const offsetSeconds = Number(timezoneData.utc_offset_seconds ?? timezoneData.utc_offset ?? 0);
     const countryCode = timezoneData.country_code as string | undefined;
     if (!timezone) {
       return json({ ok: false, error: 'timezone-missing' });
@@ -50,7 +51,13 @@ export async function onRequest({ request }: PagesEventContext): Promise<Respons
     });
     const parts = formatter.formatToParts(date);
     const getPart = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? '00';
-    const localTimeIso = `${getPart('year')}-${getPart('month')}-${getPart('day')}T${getPart('hour')}:${getPart('minute')}:${getPart('second')}`;
+    const offsetMinutes = Math.max(-720, Math.min(840, Math.round(offsetSeconds / 60)));
+    const offsetSign = offsetMinutes >= 0 ? '+' : '-';
+    const absMinutes = Math.abs(offsetMinutes);
+    const offsetHours = String(Math.floor(absMinutes / 60)).padStart(2, '0');
+    const offsetRestMinutes = String(absMinutes % 60).padStart(2, '0');
+    const offset = `${offsetSign}${offsetHours}:${offsetRestMinutes}`;
+    const localTimeIso = `${getPart('year')}-${getPart('month')}-${getPart('day')}T${getPart('hour')}:${getPart('minute')}:${getPart('second')}${offset}`;
 
     let holiday: { name: string; countryCode: string } | undefined;
     if (countryCode) {

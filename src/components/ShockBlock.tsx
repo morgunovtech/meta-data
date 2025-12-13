@@ -71,7 +71,7 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
     return null;
   }, [manualCoords, metadata?.gps?.lat, metadata?.gps?.lon]);
 
-  const timestamp = metadata?.shotDate ?? null;
+  const timestamp = useMemo(() => metadata?.shotDate ?? new Date().toISOString(), [metadata?.shotDate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -182,7 +182,10 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
   const software = useMemo(() => extractSoftware(metadata), [metadata]);
   const cameraPosition = useMemo(() => inferCameraPosition(metadata), [metadata]);
   const movement = useMemo(() => inferMovement(metadata), [metadata]);
-  const localContext = useMemo(() => resolveLocalTime(metadata, timezoneFetch.data ?? null), [metadata, timezoneFetch.data]);
+  const localContext = useMemo(
+    () => resolveLocalTime(metadata, timezoneFetch.data ?? null, coords),
+    [coords, metadata, timezoneFetch.data]
+  );
   const weatherSummary = useMemo(() => summarizeWeather(weatherFetch.data ?? null), [weatherFetch.data]);
 
   const localTimeDetails = useMemo(() => {
@@ -199,7 +202,7 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
       minute: '2-digit',
       hour12: false
     };
-    if (localContext.timezone) {
+    if (isValidTimeZone(localContext.timezone)) {
       options.timeZone = localContext.timezone;
     }
     const formatted = new Intl.DateTimeFormat(lang, options).format(date);
@@ -393,7 +396,11 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
     }
 
     if (localTimeDetails) {
-      const timezoneLabel = localTimeDetails.timezone ?? t('insightTimeTimezoneUnknown');
+      const timezoneLabel = localTimeDetails.timezone
+        ? localContext.timezoneSource === 'approx'
+          ? t('insightTimeTimezoneApprox', { timezone: localTimeDetails.timezone })
+          : localTimeDetails.timezone
+        : t('insightTimeTimezoneUnknown');
       const periodLabel = timePeriodLabel ?? t('dayPeriod_unknown');
       const holidayText = localContext.holidayName
         ? t('insightTimeHoliday', { holiday: localContext.holidayName })
@@ -581,6 +588,7 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
   return (
     <section className="panel insights-panel">
       <h2 className="section-title">{t('shockBlockTitle')}</h2>
+      <p className="panel__hint">{t('insightDisclaimer')}</p>
 
       {!metadata?.gps && !manualCoords ? (
         <div className="manual-coords">
@@ -676,6 +684,17 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
     </section>
   );
 };
+
+function isValidTimeZone(timezone?: string): timezone is string {
+  if (!timezone) return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format();
+    return true;
+  } catch (error) {
+    console.warn('invalid-timezone', timezone, error);
+    return false;
+  }
+}
 
 function capitalize(value: string) {
   if (!value) return value;
