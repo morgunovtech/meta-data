@@ -13,8 +13,9 @@ export const MetadataPanel: React.FC<MetadataPanelProps> = ({ fileInfo, metadata
   const t = useT();
   const { lang } = useI18n();
 
-  const fileName = fileInfo.file.name.replace(/\.[^/.]+$/, '');
-  const { typeKey, format } = describeFileType(fileInfo.mimeType, fileInfo.file.name);
+  const displayName = (fileInfo.originalName ?? fileInfo.file.name).replace(/\.[^/.]+$/, '');
+  const displayMime = fileInfo.originalMimeType ?? fileInfo.mimeType;
+  const { typeKey, format } = describeFileType(displayMime, fileInfo.originalName ?? fileInfo.file.name);
   const typeLabel = t(typeKey as MessageKey);
   const orientationKey = metadata?.orientation
     ? `orientation${capitalize(metadata.orientation)}`
@@ -69,10 +70,13 @@ export const MetadataPanel: React.FC<MetadataPanelProps> = ({ fileInfo, metadata
     <aside className="panel" aria-label={t('basicInfoTitle')}>
       <h2 className="section-title">{t('basicInfoTitle')}</h2>
       <div className="metadata-grid">
-        <MetadataItem label={t('nameLabel')} value={fileName || fileInfo.file.name} />
+        <MetadataItem label={t('nameLabel')} value={displayName || fileInfo.file.name} />
         <MetadataItem label={t('typeLabel')} value={typeLabel} />
         <MetadataItem label={t('formatLabel')} value={format} />
-        <MetadataItem label={t('sizeLabel')} value={formatBytes(fileInfo.sizeBytes)} />
+        <MetadataItem
+          label={t('sizeLabel')}
+          value={formatBytes(fileInfo.originalSizeBytes ?? fileInfo.sizeBytes)}
+        />
         <MetadataItem label={t('resolutionLabel')} value={formatDimensions(fileInfo.width, fileInfo.height)} />
         <MetadataItem label={t('megapixelsLabel')} value={formatMegapixels(fileInfo.width, fileInfo.height)} />
         <MetadataItem label={t('orientationLabel')} value={t(orientationKey as MessageKey)} />

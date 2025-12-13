@@ -396,7 +396,8 @@ const App: React.FC = () => {
 
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      const fallbackName = `${fileInfo.file.name.replace(/\.[^/.]+$/, '')}.cleaned.${extension}`;
+      const baseName = (fileInfo.originalName ?? fileInfo.file.name).replace(/\.[^/.]+$/, '');
+      const fallbackName = `${baseName}.cleaned.${extension}`;
       link.download = renameFile ? createAnonymisedName(extension) : fallbackName;
       document.body.appendChild(link);
       link.click();

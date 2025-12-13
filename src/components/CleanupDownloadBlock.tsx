@@ -117,7 +117,7 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
       return formatBytes(estimatedSize);
     }
     if (fileInfo) {
-      return formatBytes(fileInfo.sizeBytes);
+      return formatBytes(fileInfo.originalSizeBytes ?? fileInfo.sizeBytes);
     }
     return t('emptyValue');
   }, [estimatedSize, fileInfo, t]);

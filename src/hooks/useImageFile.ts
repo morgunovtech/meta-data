@@ -4,7 +4,21 @@ import type { BasicFileInfo } from '../types/metadata';
 
 const MAX_SIZE_BYTES = 20 * 1024 * 1024;
 const MAX_PIXEL_COUNT = 40_000_000; // guard overly large resolution that may crash canvases
-const SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif', 'image/bmp'];
+const NATIVE_SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif', 'image/bmp'];
+const HEIC_TYPES = ['image/heic', 'image/heif'];
+const SUPPORTED_TYPES = [...NATIVE_SUPPORTED_TYPES, ...HEIC_TYPES];
+
+function inferMimeFromName(name: string): string | null {
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.heic') || lower.endsWith('.heif')) return 'image/heic';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.avif')) return 'image/avif';
+  if (lower.endsWith('.gif')) return 'image/gif';
+  if (lower.endsWith('.bmp')) return 'image/bmp';
+  return null;
+}
 
 async function makeThumbnail(
   dataUrl: string,
@@ -29,6 +43,19 @@ async function makeThumbnail(
   ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
   const url = canvas.toDataURL('image/jpeg', 0.92);
   return { url, width: image.width, height: image.height };
+}
+
+async function convertHeicToJpeg(file: File): Promise<File> {
+  const heic2any = (await import('heic2any')) as unknown as (options: {
+    blob: Blob;
+    toType?: string;
+    quality?: number;
+  }) => Promise<Blob | Blob[]>;
+
+  const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 });
+  const outputBlob = Array.isArray(converted) ? converted[0] : converted;
+  const safeName = file.name.replace(/\.(heic|heif)$/i, '') || 'photo';
+  return new File([outputBlob], `${safeName}.jpg`, { type: 'image/jpeg' });
 }
 
 export function useImageFile() {
@@ -61,22 +88,24 @@ export function useImageFile() {
       if (import.meta.env.DEV) {
         console.info('[pipeline] upload:start', { name: file.name, type: file.type, size: file.size });
       }
+      const inferredType = file.type || inferMimeFromName(file.name) || '';
       try {
         if (file.size > MAX_SIZE_BYTES) {
           setError(t('fileTooLarge', { limit: 20 }));
           setLoading(false);
           return;
         }
-        if (!SUPPORTED_TYPES.includes(file.type)) {
-          if (file.name.toLowerCase().endsWith('.heic')) {
-            setError(t('unsupportedHeic'));
-          } else {
-            setError(t('unsupportedFormat'));
-          }
+        if (!SUPPORTED_TYPES.includes(inferredType)) {
+          setError(t('unsupportedFormat'));
           setLoading(false);
           return;
         }
-        const objectUrl = URL.createObjectURL(file);
+
+        const needsHeicConversion = HEIC_TYPES.includes(inferredType);
+        const sourceFile = file;
+        const workingFile = needsHeicConversion ? await convertHeicToJpeg(file) : file;
+        const mimeType = workingFile.type || inferredType || 'image/jpeg';
+        const objectUrl = URL.createObjectURL(workingFile);
         objectUrlRef.current = objectUrl;
         const { url: thumbnailUrl, width, height } = await makeThumbnail(objectUrl);
         const pixelCount = width * height;
@@ -86,22 +115,35 @@ export function useImageFile() {
           return;
         }
         const info: BasicFileInfo = {
-          file,
+          file: workingFile,
           dataUrl: objectUrl,
           thumbnailUrl,
           width,
           height,
           aspectRatio: width / height,
-          sizeBytes: file.size,
-          mimeType: file.type
+          sizeBytes: needsHeicConversion ? sourceFile.size : workingFile.size,
+          mimeType,
+          originalFile: needsHeicConversion ? sourceFile : undefined,
+          originalMimeType: needsHeicConversion ? sourceFile.type : undefined,
+          originalSizeBytes: needsHeicConversion ? sourceFile.size : undefined,
+          originalName: needsHeicConversion ? sourceFile.name : undefined,
+          processedSizeBytes: workingFile.size,
+          wasConverted: needsHeicConversion
         };
         setFileInfo(info);
         if (import.meta.env.DEV) {
-          console.info('[pipeline] upload:ready', { width, height, mime: file.type });
+          console.info('[pipeline] upload:ready', {
+            width,
+            height,
+            mime: workingFile.type,
+            converted: needsHeicConversion
+          });
         }
       } catch (err) {
         console.error('file-processing', err);
-        if (file.type === 'image/avif' || file.type === 'image/heic' || file.type === 'image/heif') {
+        if (HEIC_TYPES.includes(inferredType)) {
+          setError(t('heicConversionFailed'));
+        } else if (inferredType === 'image/avif') {
           setError(t('browserFormatUnsupported'));
         } else {
           setError(t('corruptedFile'));
