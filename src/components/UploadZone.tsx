@@ -74,7 +74,8 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ loading, onFile, error }
           ref={inputRef}
           type="file"
           accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/bmp"
-          className="sr-only"
+          className="drop-zone__file"
+          aria-label={t('uploadButton')}
           onChange={(event) => handleFiles(event.target.files)}
         />
       </div>
