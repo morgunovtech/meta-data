@@ -34,8 +34,20 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ loading, onFile, error }
   return (
     <section className="panel">
       <h2 className="section-title">{t('uploadTitle')}</h2>
+      <p className="panel__hint">{t('uploadLead')}</p>
       <div
         className={clsx('drop-zone', { 'drag-over': dragOver })}
+        role="button"
+        tabIndex={0}
+        aria-busy={loading}
+        aria-label={t('uploadTitle')}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
+        onClick={() => inputRef.current?.click()}
         onDragEnter={(event) => {
           event.preventDefault();
           setDragOver(true);
@@ -55,12 +67,14 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ loading, onFile, error }
         >
           {loading ? '…' : t('uploadButton')}
         </button>
-        <p>{t('orDrop')}</p>
+        <p className="drop-zone__hint">{t('orDrop')}</p>
+        <p className="drop-zone__subhint">{t('uploadFormats')}</p>
         <input
+          id="upload-input"
           ref={inputRef}
           type="file"
           accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/bmp"
-          hidden
+          className="sr-only"
           onChange={(event) => handleFiles(event.target.files)}
         />
       </div>

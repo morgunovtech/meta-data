@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-type Theme = 'light' | 'dark';
-export type ThemeMode = 'light' | 'dark' | 'system';
+type Theme = 'light' | 'dark' | 'accessible';
+export type ThemeMode = 'light' | 'dark' | 'system' | 'accessible';
 
 interface ThemeContextValue {
   mode: ThemeMode;
@@ -24,7 +24,7 @@ function getStoredMode(): ThemeMode {
     return 'system';
   }
   const stored = window.localStorage.getItem(STORAGE_KEY);
-  if (stored === 'light' || stored === 'dark' || stored === 'system') {
+  if (stored === 'light' || stored === 'dark' || stored === 'system' || stored === 'accessible') {
     return stored;
   }
   return 'system';
@@ -32,7 +32,7 @@ function getStoredMode(): ThemeMode {
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [mode, setModeState] = useState<ThemeMode>(() => getStoredMode());
-  const [resolved, setResolved] = useState<Theme>(() => (mode === 'system' ? getSystemTheme() : mode));
+  const [resolved, setResolved] = useState<Theme>(() => (mode === 'system' ? getSystemTheme() : (mode as Theme)));
 
   useEffect(() => {
     if (typeof document === 'undefined') {
@@ -41,7 +41,8 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const root = document.documentElement;
     root.dataset.theme = resolved;
     root.dataset.themeMode = mode;
-    root.style.colorScheme = resolved === 'dark' ? 'dark' : 'light';
+    const colorScheme = resolved === 'dark' ? 'dark' : 'light';
+    root.style.colorScheme = colorScheme;
   }, [mode, resolved]);
 
   useEffect(() => {
@@ -55,7 +56,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return () => media.removeEventListener('change', listener);
       }
     } else {
-      setResolved(mode);
+      setResolved(mode as Theme);
     }
     return undefined;
   }, [mode]);

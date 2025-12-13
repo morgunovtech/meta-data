@@ -294,7 +294,7 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
       </div>
 
       <div className="cleanup-presets">
-        <label className="cleanup-presets__control">
+        <label className="cleanup-select">
           <span>{t('presetLabel')}</span>
           <select value={preset} onChange={(event) => onPresetChange(event.target.value as PresetKey)}>
             <option value="none">{t('presetNone')}</option>
@@ -304,9 +304,23 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
             <option value="personal">{t('presetPersonal')}</option>
           </select>
         </label>
-        <button type="button" className="button" onClick={onApplyRecommendation}>
+        <button type="button" className="button button--primary" onClick={onApplyRecommendation}>
           {t('privacyOneClick')}
         </button>
+      </div>
+
+      <div className="cleanup-quality">
+        <label className="cleanup-select">
+          <span>{t('qualityLabel')}</span>
+          <select value={qualityMode} onChange={(event) => setQualityMode(event.target.value as QualityMode)}>
+            <option value="low">{t('qualityMode_low')}</option>
+            <option value="medium">{t('qualityMode_medium')}</option>
+            <option value="original">{t('qualityMode_original')}</option>
+          </select>
+        </label>
+        <span className="cleanup-select__meta">
+          {t('qualityPercentLabel', { percent: QUALITY_PERCENT[qualityMode] })} · {t('estimatedOutputSize', { size: estimatedLabel })}
+        </span>
       </div>
 
       <div className="cleanup-options cleanup-options--grid">
@@ -383,27 +397,6 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
       {manualMaskMode ? <p className="cleanup-preview__hint">{t('manualMaskDrawingHint')}</p> : null}
 
       <div className="cleanup-control-row">
-        <fieldset className="quality-selector">
-          <legend>{t('qualityLabel')}</legend>
-          <div className="quality-selector__options">
-            {(['low', 'medium', 'original'] as QualityMode[]).map((mode) => (
-              <label key={mode} className={`quality-selector__option ${qualityMode === mode ? 'is-active' : ''}`}>
-                <input
-                  type="radio"
-                  name="quality-mode"
-                  value={mode}
-                  checked={qualityMode === mode}
-                  onChange={() => setQualityMode(mode)}
-                />
-                <span>{t(`qualityMode_${mode}` as const)}</span>
-              </label>
-            ))}
-          </div>
-          <span className="quality-selector__meta">
-            {t('qualityPercentLabel', { percent: QUALITY_PERCENT[qualityMode] })} ·{' '}
-            {t('estimatedOutputSize', { size: estimatedLabel })}
-          </span>
-        </fieldset>
         {(blurFaces || manualMasks.length > 0) && (
           <div className="range-line range-line--compact">
             <label htmlFor="blur-strength">{t('blurStrengthLabel')}</label>
