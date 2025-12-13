@@ -61,6 +61,15 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ loading, onFile, error }
             }
           }}
         >
+          <input
+            id={uploadInputId}
+            ref={inputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/bmp,image/heic,image/heif,.heic,.heif"
+            className="drop-zone__file"
+            aria-label={t('uploadButton')}
+            onChange={(event) => handleFiles(event.target.files)}
+          />
           <span className="sr-only">{t('uploadTitle')}</span>
           <span className="button button--primary" aria-live="polite">
             {loading ? '…' : t('uploadButton')}
@@ -69,15 +78,6 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ loading, onFile, error }
           <p className="drop-zone__subhint">{t('uploadFormats')}</p>
           <p className="drop-zone__support">{t('uploadFormatsSupport')}</p>
         </label>
-        <input
-          id={uploadInputId}
-          ref={inputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/bmp,image/heic,image/heif,.heic,.heif"
-          className="drop-zone__file sr-only"
-          aria-label={t('uploadButton')}
-          onChange={(event) => handleFiles(event.target.files)}
-        />
       </div>
       {error ? <ErrorBanner message={error} /> : null}
     </section>
