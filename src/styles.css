@@ -350,13 +350,6 @@ button {
   font-size: 0.9rem;
 }
 
-.drop-zone__file {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-
 .preview-wrapper {
   position: relative;
   border-radius: 16px;
@@ -695,10 +688,18 @@ input[type='range'] {
 }
 
 .insight-location__row {
-  display: grid;
-  grid-template-columns: minmax(0, 140px) minmax(0, 1fr);
-  gap: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
   font-size: 0.95rem;
+}
+
+@media (min-width: 720px) {
+  .insight-location__row {
+    display: grid;
+    grid-template-columns: minmax(0, 140px) minmax(0, 1fr);
+    gap: 0.4rem;
+  }
 }
 
 .insight-location__row dt {
@@ -718,8 +719,15 @@ input[type='range'] {
 
 .insight-location__actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 0.4rem;
+}
+
+@media (min-width: 720px) {
+  .insight-location__actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
 }
 
 .insight-location__actions a {
@@ -1004,6 +1012,7 @@ input[type='range'] {
 .cleanup-preview__overlay {
   position: absolute;
   inset: 0;
+  touch-action: none;
 }
 
 .cleanup-preview__overlay.is-drawing {

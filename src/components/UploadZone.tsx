@@ -49,28 +49,21 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ loading, onFile, error }
         onDragOver={(event) => event.preventDefault()}
         onDrop={handleDrop}
       >
+        <input
+          id={uploadInputId}
+          ref={inputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/bmp,image/heic,image/heif,.heic,.heif"
+          className="sr-only"
+          aria-label={t('uploadButton')}
+          onChange={(event) => handleFiles(event.target.files)}
+        />
         <label
           className="drop-zone__label"
           htmlFor={uploadInputId}
           role="button"
           tabIndex={0}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              inputRef.current?.click();
-            }
-          }}
         >
-          <input
-            id={uploadInputId}
-            ref={inputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/bmp,image/heic,image/heif,.heic,.heif"
-            className="drop-zone__file"
-            aria-label={t('uploadButton')}
-            onChange={(event) => handleFiles(event.target.files)}
-          />
-          <span className="sr-only">{t('uploadTitle')}</span>
           <span className="button button--primary" aria-live="polite">
             {loading ? '…' : t('uploadButton')}
           </span>

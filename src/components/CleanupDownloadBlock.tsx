@@ -16,9 +16,7 @@ interface CleanupDownloadBlockProps {
   manualMasks: ManualMask[];
   antiSearchEnabled: boolean;
   antiSearchLevel: number;
-  reduceColor: boolean;
   watermark: boolean;
-  prnuCleanup: boolean;
   previewDimensions: CleanupPreviewDimensions | null;
   setRemoveMetadata: (value: boolean) => void;
   setBlurFaces: (value: boolean) => void;
@@ -30,9 +28,7 @@ interface CleanupDownloadBlockProps {
   onManualMaskRemove: (id: string) => void;
   setAntiSearchEnabled: (value: boolean) => void;
   setAntiSearchLevel: (value: number) => void;
-  setReduceColor: (value: boolean) => void;
   setWatermark: (value: boolean) => void;
-  setPrnuCleanup: (value: boolean) => void;
   preset: PresetKey;
   onPresetChange: (preset: PresetKey) => void;
   onClean: () => Promise<void>;
@@ -64,9 +60,7 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
   manualMasks,
   antiSearchEnabled,
   antiSearchLevel,
-  reduceColor,
   watermark,
-  prnuCleanup,
   previewDimensions,
   setRemoveMetadata,
   setBlurFaces,
@@ -78,9 +72,7 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
   onManualMaskRemove,
   setAntiSearchEnabled,
   setAntiSearchLevel,
-  setReduceColor,
   setWatermark,
-  setPrnuCleanup,
   preset,
   onPresetChange,
   onClean,
@@ -152,10 +144,10 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
     ? t('privacyDiffMetadataRemoved')
     : t('privacyDiffMetadataKept');
   const renameSummary = renameFile ? t('privacyDiffRenameOn') : t('privacyDiffRenameOff');
-  const antiSearchSummary = antiSearchEnabled ? t('privacyDiffAntiSearchOn') : t('privacyDiffAntiSearchOff');
-  const colorSummary = reduceColor ? t('privacyDiffColorReduced') : t('privacyDiffColorFull');
+  const antiSearchSummary = antiSearchEnabled
+    ? t('privacyDiffAntiSearchOn', { level: antiSearchLevel })
+    : t('privacyDiffAntiSearchOff');
   const watermarkSummary = watermark ? t('privacyDiffWatermarkOn') : t('privacyDiffWatermarkOff');
-  const prnuSummary = prnuCleanup ? t('privacyDiffPrnuOn') : t('privacyDiffPrnuOff');
   const qualitySummary = t('privacyDiffQualityMode', {
     mode: t(`qualityMode_${qualityMode}` as const),
     percent: QUALITY_PERCENT[qualityMode]
@@ -388,20 +380,6 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
             <small>{t('antiSearchHint')}</small>
           </span>
         </label>
-        <label className={`cleanup-checkbox ${prnuCleanup ? 'is-active' : ''}`}>
-          <input type="checkbox" checked={prnuCleanup} onChange={(event) => setPrnuCleanup(event.target.checked)} />
-          <span>
-            <strong>{t('prnuLabel')}</strong>
-            <small>{t('prnuHint')}</small>
-          </span>
-        </label>
-        <label className={`cleanup-checkbox ${reduceColor ? 'is-active' : ''}`}>
-          <input type="checkbox" checked={reduceColor} onChange={(event) => setReduceColor(event.target.checked)} />
-          <span>
-            <strong>{t('reduceColorLabel')}</strong>
-            <small>{t('reduceColorHint')}</small>
-          </span>
-        </label>
         <label className={`cleanup-checkbox ${watermark ? 'is-active' : ''}`}>
           <input type="checkbox" checked={watermark} onChange={(event) => setWatermark(event.target.checked)} />
           <span>
@@ -475,6 +453,7 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerLeave}
                 onPointerLeave={handlePointerLeave}
                 role="presentation"
                 style={{ pointerEvents: manualMaskMode ? 'auto' : 'none' }}
@@ -494,8 +473,6 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
             <li>{blurSummary}</li>
             <li>{antiSearchSummary}</li>
             <li>{renameSummary}</li>
-            <li>{colorSummary}</li>
-            <li>{prnuSummary}</li>
             <li>{watermarkSummary}</li>
             <li>{qualitySummary}</li>
           </ul>
