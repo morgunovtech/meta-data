@@ -62,15 +62,17 @@ export const MetadataPanel: React.FC<MetadataPanelProps> = ({ fileInfo, metadata
 
   const shotDate = metadata ? formatDetailedDate(metadata.shotDate, lang) : undefined;
   const basicsNotes = [
-    t('basicInfoFilenameTip'),
-    t('basicInfoMetaTip'),
-    t('basicInfoTimeTip'),
-    t('basicInfoContextTip')
+    t('basicInfoTimelineTip'),
+    t('basicInfoFingerprintTip'),
+    t('basicInfoDetailTip'),
+    t('basicInfoMetadataCountTip'),
+    t('basicInfoFormatSizeTip')
   ];
 
   return (
     <aside className="panel" aria-label={t('basicInfoTitle')}>
       <h2 className="section-title">{t('basicInfoTitle')}</h2>
+      <p className="section-subtitle">{t('basicInfoSubtitle')}</p>
       <div className="metadata-grid">
         <MetadataItem label={t('nameLabelSource')} value={fileInfo.originalName ?? fileInfo.file.name} />
         <MetadataItem label={t('nameLabelWorking')} value={displayName || fileInfo.file.name} />
