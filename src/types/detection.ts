@@ -12,5 +12,4 @@ export interface DetectionSummary {
   vehicles: number;
   animals: number;
   description: string;
-  ocrTexts?: string[];
 }

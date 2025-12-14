@@ -52,7 +52,6 @@ const presetConfig: Record<Exclude<PresetKey, 'none'>, {
   blurFaces: boolean;
   antiSearchEnabled: boolean;
   antiSearchLevel: number;
-  watermark: boolean;
   qualityMode: QualityMode;
   renameFile: boolean;
 }> = {
@@ -61,7 +60,6 @@ const presetConfig: Record<Exclude<PresetKey, 'none'>, {
     blurFaces: true,
     antiSearchEnabled: true,
     antiSearchLevel: 2,
-    watermark: true,
     qualityMode: 'medium',
     renameFile: true
   },
@@ -70,7 +68,6 @@ const presetConfig: Record<Exclude<PresetKey, 'none'>, {
     blurFaces: false,
     antiSearchEnabled: true,
     antiSearchLevel: 1,
-    watermark: false,
     qualityMode: 'medium',
     renameFile: true
   },
@@ -79,7 +76,6 @@ const presetConfig: Record<Exclude<PresetKey, 'none'>, {
     blurFaces: false,
     antiSearchEnabled: false,
     antiSearchLevel: 1,
-    watermark: false,
     qualityMode: 'original',
     renameFile: false
   },
@@ -88,7 +84,6 @@ const presetConfig: Record<Exclude<PresetKey, 'none'>, {
     blurFaces: true,
     antiSearchEnabled: true,
     antiSearchLevel: 2,
-    watermark: false,
     qualityMode: 'medium',
     renameFile: true
   }
@@ -139,7 +134,6 @@ const App: React.FC = () => {
   const [antiSearchEnabled, setAntiSearchEnabled] = useState(false);
   const [antiSearchLevel, setAntiSearchLevel] = useState(2);
   const [antiSearchParams, setAntiSearchParams] = useState<AntiSearchParams | null>(null);
-  const [watermark, setWatermark] = useState(false);
   const [preset, setPreset] = useState<PresetKey>('none');
   const [processing, setProcessing] = useState(false);
   const [notice, setNotice] = useState<NoticeState | null>(null);
@@ -149,6 +143,7 @@ const App: React.FC = () => {
   const [previewDimensions, setPreviewDimensions] = useState<CleanupPreviewDimensions | null>(null);
   const reduceColor = antiSearchEnabled && antiSearchLevel === 3;
   const prnuCleanup = removeMetadata;
+  const watermark = true;
 
   const formatCountLabel = useCallback(
     (count: number, kind: 'person' | 'vehicle' | 'animal') => {
@@ -195,7 +190,6 @@ const App: React.FC = () => {
       config.blurFaces !== blurFaces ||
       config.antiSearchEnabled !== antiSearchEnabled ||
       config.antiSearchLevel !== antiSearchLevel ||
-      config.watermark !== watermark ||
       config.qualityMode !== qualityMode ||
       config.renameFile !== renameFile
     ) {
@@ -208,8 +202,7 @@ const App: React.FC = () => {
     preset,
     qualityMode,
     removeMetadata,
-    renameFile,
-    watermark
+    renameFile
   ]);
 
   const handleFile = useCallback(
@@ -229,7 +222,6 @@ const App: React.FC = () => {
       setAntiSearchEnabled(false);
       setAntiSearchParams(null);
       setAntiSearchLevel(2);
-      setWatermark(false);
       setPreset('none');
       setPreviewDimensions(null);
       await processFile(file);
@@ -451,7 +443,6 @@ const App: React.FC = () => {
       setBlurFaces(config.blurFaces);
       setAntiSearchEnabled(config.antiSearchEnabled);
       setAntiSearchLevel(config.antiSearchLevel);
-      setWatermark(config.watermark);
       setQualityMode(config.qualityMode);
       setRenameFile(config.renameFile);
     },
@@ -475,10 +466,6 @@ const App: React.FC = () => {
     }
     if (analysisSummary.animals > 0) {
       segments.push(formatCountLabel(analysisSummary.animals, 'animal'));
-    }
-    if (analysisSummary.ocrTexts && analysisSummary.ocrTexts.length > 0) {
-      const joined = analysisSummary.ocrTexts.slice(0, 3).join(' • ');
-      segments.push(t('sceneDescriptionText', { text: joined }));
     }
     if (segments.length === 0) {
       return t('sceneDescriptionEmpty');
@@ -522,7 +509,6 @@ const App: React.FC = () => {
           metadata={metadata}
           manualCoords={manualCoords}
           onManualCoordsChange={setManualCoords}
-          imageDataUrl={fileInfo.dataUrl}
         />
       ) : null}
 
@@ -536,7 +522,6 @@ const App: React.FC = () => {
         manualMaskMode={manualMaskMode}
         manualMasks={manualMasks}
         antiSearchEnabled={antiSearchEnabled}
-        watermark={watermark}
         previewDimensions={previewDimensions}
         setRemoveMetadata={setRemoveMetadata}
         setBlurFaces={setBlurFaces}
@@ -549,7 +534,6 @@ const App: React.FC = () => {
         setAntiSearchEnabled={setAntiSearchEnabled}
         antiSearchLevel={antiSearchLevel}
         setAntiSearchLevel={setAntiSearchLevel}
-        setWatermark={setWatermark}
         preset={preset}
         onPresetChange={applyPreset}
         onClean={handleDownload}

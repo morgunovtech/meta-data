@@ -16,7 +16,6 @@ interface CleanupDownloadBlockProps {
   manualMasks: ManualMask[];
   antiSearchEnabled: boolean;
   antiSearchLevel: number;
-  watermark: boolean;
   previewDimensions: CleanupPreviewDimensions | null;
   setRemoveMetadata: (value: boolean) => void;
   setBlurFaces: (value: boolean) => void;
@@ -28,7 +27,6 @@ interface CleanupDownloadBlockProps {
   onManualMaskRemove: (id: string) => void;
   setAntiSearchEnabled: (value: boolean) => void;
   setAntiSearchLevel: (value: number) => void;
-  setWatermark: (value: boolean) => void;
   preset: PresetKey;
   onPresetChange: (preset: PresetKey) => void;
   onClean: () => Promise<void>;
@@ -60,7 +58,6 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
   manualMasks,
   antiSearchEnabled,
   antiSearchLevel,
-  watermark,
   previewDimensions,
   setRemoveMetadata,
   setBlurFaces,
@@ -72,7 +69,6 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
   onManualMaskRemove,
   setAntiSearchEnabled,
   setAntiSearchLevel,
-  setWatermark,
   preset,
   onPresetChange,
   onClean,
@@ -147,7 +143,7 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
   const antiSearchSummary = antiSearchEnabled
     ? t('privacyDiffAntiSearchOn', { level: antiSearchLevel })
     : t('privacyDiffAntiSearchOff');
-  const watermarkSummary = watermark ? t('privacyDiffWatermarkOn') : t('privacyDiffWatermarkOff');
+  const watermarkSummary = t('privacyDiffWatermarkOn');
   const qualitySummary = t('privacyDiffQualityMode', {
     mode: t(`qualityMode_${qualityMode}` as const),
     percent: QUALITY_PERCENT[qualityMode]
@@ -247,6 +243,7 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
         overlayRef.current.releasePointerCapture(event.pointerId);
       }
       finalizeMask();
+      event.preventDefault();
     },
     [finalizeMask]
   );
@@ -276,17 +273,20 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
       const mapped = mapStrokeToOverlay(mask);
       if (!mapped || mapped.points.length < 2) return;
       ctx.save();
-      ctx.lineWidth = Math.max(mapped.radius * 2, 8);
+      ctx.lineWidth = Math.max(mapped.radius, 6);
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
       ctx.strokeStyle = color;
-      ctx.globalAlpha = 0.75;
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.5;
       ctx.beginPath();
       ctx.moveTo(mapped.points[0].x, mapped.points[0].y);
       for (let i = 1; i < mapped.points.length; i += 1) {
         const pt = mapped.points[i];
         ctx.lineTo(pt.x, pt.y);
       }
+      ctx.closePath();
+      ctx.fill();
       ctx.stroke();
       ctx.restore();
     };
@@ -378,13 +378,6 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
           <span>
             <strong>{t('antiSearchLabel')}</strong>
             <small>{t('antiSearchHint')}</small>
-          </span>
-        </label>
-        <label className={`cleanup-checkbox ${watermark ? 'is-active' : ''}`}>
-          <input type="checkbox" checked={watermark} onChange={(event) => setWatermark(event.target.checked)} />
-          <span>
-            <strong>{t('watermarkLabel')}</strong>
-            <small>{t('watermarkHint')}</small>
           </span>
         </label>
       </div>

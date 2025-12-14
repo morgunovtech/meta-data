@@ -15,6 +15,14 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ loading, onFile, error }
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
+  const openPicker = useCallback(() => {
+    if (loading) return;
+    const input = inputRef.current;
+    if (input) {
+      input.click();
+    }
+  }, [loading]);
+
   const handleFiles = useCallback(
     (files: FileList | null) => {
       if (!files?.length) return;
@@ -63,6 +71,13 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ loading, onFile, error }
           htmlFor={uploadInputId}
           role="button"
           tabIndex={0}
+          onClick={openPicker}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              openPicker();
+            }
+          }}
         >
           <span className="button button--primary" aria-live="polite">
             {loading ? '…' : t('uploadButton')}

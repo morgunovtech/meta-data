@@ -9,7 +9,7 @@ interface BlurRegion {
 }
 
 const MIN_MASK_SIZE = 12;
-const MIN_MASK_POINTS = 2;
+const MIN_MASK_POINTS = 3;
 
 function clampRect(rect: BlurRegion, maxWidth: number, maxHeight: number): BlurRegion | null {
   const x = Math.max(0, Math.min(rect.x, maxWidth));
@@ -85,17 +85,19 @@ export function blurManualMasks(
     if (!maskCtx) return;
 
     const radius = Math.max(mask.radius, MIN_MASK_SIZE / 2);
-    maskCtx.lineWidth = radius * 2;
     maskCtx.lineJoin = 'round';
     maskCtx.lineCap = 'round';
-    maskCtx.strokeStyle = 'white';
-
     maskCtx.beginPath();
     maskCtx.moveTo(mask.points[0].x, mask.points[0].y);
     for (let i = 1; i < mask.points.length; i += 1) {
       const pt = mask.points[i];
       maskCtx.lineTo(pt.x, pt.y);
     }
+    maskCtx.closePath();
+    maskCtx.fillStyle = 'white';
+    maskCtx.strokeStyle = 'white';
+    maskCtx.lineWidth = radius * 1.2;
+    maskCtx.fill();
     maskCtx.stroke();
 
     const blurLayer = document.createElement('canvas');

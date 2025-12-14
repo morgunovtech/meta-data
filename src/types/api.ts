@@ -32,12 +32,3 @@ export interface PoiResult {
   distance: number;
 }
 
-export interface ImageUniquenessMatch {
-  label: string;
-  similarity: number;
-}
-
-export interface ImageUniquenessResult {
-  score: number;
-  matches: ImageUniquenessMatch[];
-}

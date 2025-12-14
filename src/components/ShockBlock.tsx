@@ -1,20 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n, useT, type MessageKey } from '../i18n';
 import type { StructuredMetadata, ManualCoordinates } from '../types/metadata';
-import type { ReverseGeocodeResult, HistoricalWeatherResult, PoiResult, ImageUniquenessResult } from '../types/api';
+import type { ReverseGeocodeResult, HistoricalWeatherResult, PoiResult } from '../types/api';
 import { useAPIFetch } from '../hooks/useAPIFetch';
 import { ErrorBanner } from './ErrorBanner';
 import { MapBlock } from './MapBlock';
 import { googleMapsLink, streetViewLink } from '../utils/mapLinks';
 import { formatDetailedDate, formatMeters, formatNumber } from '../utils/format';
 import { extractSoftware, inferCameraPosition, inferMovement, summarizeWeather } from '../utils/insights';
-import { computePhash } from '../utils/phash';
 
 interface ShockBlockProps {
   metadata: StructuredMetadata | null;
   manualCoords: ManualCoordinates | null;
   onManualCoordsChange: (coords: ManualCoordinates | null) => void;
-  imageDataUrl: string | null;
 }
 
 type InsightSeverity = 'high' | 'medium' | 'info';
@@ -26,7 +24,7 @@ interface InsightItem {
   content: React.ReactNode;
 }
 
-export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, onManualCoordsChange, imageDataUrl }) => {
+export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, onManualCoordsChange }) => {
   const t = useT();
   const { lang } = useI18n();
   const [latInput, setLatInput] = useState('');
@@ -34,9 +32,6 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
   const gpsHeading = metadata?.gps?.heading;
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef<number | null>(null);
-  const [phash, setPhash] = useState<string | null>(null);
-  const [hashLoading, setHashLoading] = useState(false);
-
   useEffect(() => {
     if (manualCoords) {
       setLatInput(manualCoords.lat.toFixed(5));
@@ -59,31 +54,6 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
   }, [manualCoords, metadata?.gps?.lat, metadata?.gps?.lon]);
 
   const timestamp = useMemo(() => metadata?.shotDate ?? new Date().toISOString(), [metadata?.shotDate]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!imageDataUrl) {
-      setPhash(null);
-      return () => {
-        cancelled = true;
-      };
-    }
-    setHashLoading(true);
-    computePhash(imageDataUrl)
-      .then((hash) => {
-        if (!cancelled) {
-          setPhash(hash);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setHashLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [imageDataUrl]);
 
   const handleCopyCoordinates = useCallback(() => {
     if (!coords) return;
@@ -135,7 +105,6 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
   const weatherFetch = useAPIFetch<HistoricalWeatherResult>();
   const poiFetch = useAPIFetch<PoiResult[]>();
   const surveillanceFetch = useAPIFetch<PoiResult[]>();
-  const uniquenessFetch = useAPIFetch<ImageUniquenessResult>();
 
   useEffect(() => {
     if (!coords) return;
@@ -152,11 +121,6 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
     poiFetch.request(`/api/nearby-poi?lat=${coords.lat}&lon=${coords.lon}`);
     surveillanceFetch.request(`/api/surveillance-candidates?lat=${coords.lat}&lon=${coords.lon}`);
   }, [coords]);
-
-  useEffect(() => {
-    if (!phash) return;
-    uniquenessFetch.request(`/api/image-uniqueness?phash=${phash}`);
-  }, [phash]);
 
   const software = useMemo(() => extractSoftware(metadata), [metadata]);
   const cameraPosition = useMemo(() => inferCameraPosition(metadata), [metadata]);
@@ -228,32 +192,6 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
         distance: Math.round(poi.distance)
       }));
   }, [surveillanceFetch.data, t]);
-
-  const uniquenessInsight = useMemo(() => {
-    if (hashLoading) {
-      return t('insightSimilarityLoading');
-    }
-    if (!phash) {
-      return t('insightSimilarityUnavailable');
-    }
-    if (uniquenessFetch.loading) {
-      return t('insightSimilarityChecking');
-    }
-    if (uniquenessFetch.error) {
-      return t('insightSimilarityError');
-    }
-    const result = uniquenessFetch.data;
-    if (!result) {
-      return t('insightSimilarityUnavailable');
-    }
-    if (result.matches.length === 0) {
-      return t('insightSimilarityUnique');
-    }
-    const list = result.matches
-      .map((match) => `${match.label} — ${(match.similarity * 100).toFixed(0)}%`)
-      .join('; ');
-    return t('insightSimilarityMatches', { list });
-  }, [hashLoading, phash, uniquenessFetch.data, uniquenessFetch.error, uniquenessFetch.loading, t]);
 
   const insights = useMemo<InsightItem[]>(() => {
     const list: InsightItem[] = [];
@@ -471,13 +409,6 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
       });
     }
 
-    list.push({
-      id: 'similarity',
-      severity: 'medium',
-      title: t('insightSimilarityTitle'),
-      content: <p>{uniquenessInsight}</p>
-    });
-
     return list;
   }, [
     coords,
@@ -506,8 +437,7 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
     poiItems,
     surveillanceFetch.loading,
     surveillanceFetch.error,
-    surveillanceItems,
-    uniquenessInsight
+    surveillanceItems
   ]);
 
   return (
@@ -585,12 +515,6 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
           <ErrorBanner
             message={t('insightSurveillanceError')}
             onRetry={() => coords && surveillanceFetch.request(`/api/surveillance-candidates?lat=${coords.lat}&lon=${coords.lon}`)}
-          />
-        ) : null}
-        {uniquenessFetch.error ? (
-          <ErrorBanner
-            message={t('insightSimilarityError')}
-            onRetry={() => phash && uniquenessFetch.request(`/api/image-uniqueness?phash=${phash}`)}
           />
         ) : null}
       </div>
