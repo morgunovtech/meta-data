@@ -38,6 +38,23 @@ type HeicDecodeResult = {
 
 const HEIC_MAX_SIDE = 2200;
 
+function createImageFromBlob(blob: Blob): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const image = new Image();
+    image.decoding = 'async';
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('image-load'));
+    };
+    image.src = url;
+  });
+}
+
 export async function decodeHeicToJpegForPreview(sourceFile: File): Promise<HeicDecodeResult> {
   const heic2any = (await import('heic2any')) as unknown as (options: {
     blob: Blob;
@@ -45,14 +62,20 @@ export async function decodeHeicToJpegForPreview(sourceFile: File): Promise<Heic
     quality?: number;
   }) => Promise<Blob | Blob[]>;
 
-  const converted = await heic2any({ blob: sourceFile, toType: 'image/jpeg', quality: 0.92 });
-  const jpegBlob = Array.isArray(converted) ? converted[0] : converted;
+  let jpegBlob: Blob;
+  try {
+    const converted = await heic2any({ blob: sourceFile, toType: 'image/jpeg', quality: 0.92 });
+    jpegBlob = Array.isArray(converted) ? converted[0] : converted;
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'heic-convert';
+    throw new Error(`heic-convert:${reason}`);
+  }
 
-  const bitmap = await createImageBitmap(jpegBlob);
-  const maxSide = Math.max(bitmap.width, bitmap.height);
+  const image = await createImageFromBlob(jpegBlob);
+  const maxSide = Math.max(image.naturalWidth, image.naturalHeight);
   const scale = Math.min(1, HEIC_MAX_SIDE / Math.max(1, maxSide));
-  const targetWidth = Math.max(1, Math.round(bitmap.width * scale));
-  const targetHeight = Math.max(1, Math.round(bitmap.height * scale));
+  const targetWidth = Math.max(1, Math.round(image.naturalWidth * scale));
+  const targetHeight = Math.max(1, Math.round(image.naturalHeight * scale));
 
   const canvas = document.createElement('canvas');
   canvas.width = targetWidth;
@@ -61,10 +84,7 @@ export async function decodeHeicToJpegForPreview(sourceFile: File): Promise<Heic
   if (!ctx) {
     throw new Error('canvas');
   }
-  ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
-  if (typeof bitmap.close === 'function') {
-    bitmap.close();
-  }
+  ctx.drawImage(image, 0, 0, targetWidth, targetHeight);
 
   const blob: Blob = await new Promise((resolve, reject) => {
     canvas.toBlob((result) => {
@@ -81,8 +101,8 @@ export async function decodeHeicToJpegForPreview(sourceFile: File): Promise<Heic
 
   return {
     file,
-    width: bitmap.width,
-    height: bitmap.height
+    width: image.naturalWidth,
+    height: image.naturalHeight
   };
 }
 

@@ -21,6 +21,17 @@ function inferMimeFromName(name: string): string | null {
   return null;
 }
 
+async function sniffHeic(file: File): Promise<boolean> {
+  try {
+    const buffer = await file.slice(0, 24).arrayBuffer();
+    const signature = new TextDecoder().decode(new Uint8Array(buffer));
+    return /ftypheic|ftypheix|ftyphevc|ftypmif1|ftypmsf1/i.test(signature);
+  } catch (error) {
+    console.warn('heic-sniff-failed', error);
+    return false;
+  }
+}
+
 async function makeThumbnail(
   dataUrl: string,
   maxSize = 720
@@ -76,8 +87,14 @@ export function useImageFile() {
       if (import.meta.env.DEV) {
         console.info('[pipeline] upload:start', { name: file.name, type: file.type, size: file.size });
       }
-      const inferredType = file.type || inferMimeFromName(file.name) || '';
+      let inferredType = file.type || inferMimeFromName(file.name) || '';
       try {
+        if (!inferredType || !SUPPORTED_TYPES.includes(inferredType)) {
+          if (await sniffHeic(file)) {
+            inferredType = 'image/heic';
+          }
+        }
+
         if (file.size > MAX_SIZE_BYTES) {
           setError(t('fileTooLarge', { limit: 20 }));
           setLoading(false);
