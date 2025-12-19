@@ -57,8 +57,14 @@ export const PreviewViewer: React.FC<PreviewViewerProps> = ({
 
   return (
     <div className="preview-panel">
-      <div className="preview-wrapper" role="img" aria-label={fileInfo.file.name} onClick={() => setFullScreen(true)}>
-        <img src={fileInfo.thumbnailUrl} alt={fileInfo.file.name} style={{ width: '100%', height: 'auto' }} />
+      <div
+        className="preview-wrapper"
+        role="img"
+        aria-label={fileInfo.file.name}
+        onClick={() => setFullScreen(true)}
+        style={{ aspectRatio: `${fileInfo.width} / ${fileInfo.height}` }}
+      >
+        <img src={fileInfo.thumbnailUrl} alt={fileInfo.file.name} className="preview-image" />
         <div style={{ position: 'absolute', inset: 0 }}>{overlays}</div>
       </div>
       <p className="preview-description">{sceneDescription}</p>

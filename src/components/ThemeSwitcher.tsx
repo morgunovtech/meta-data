@@ -23,6 +23,7 @@ export const ThemeSwitcher: React.FC = () => {
           onClick={() => setMode(option.mode)}
           aria-label={t(option.labelKey)}
           aria-pressed={mode === option.mode}
+          title={t(option.labelKey)}
         >
           <span aria-hidden="true">{option.icon}</span>
           <span className="sr-only">{t(option.labelKey)}</span>

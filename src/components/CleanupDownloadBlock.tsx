@@ -3,7 +3,8 @@ import type { BoundingBox } from '../types/detection';
 import type { BasicFileInfo } from '../types/metadata';
 import type { CleanupPreviewDimensions, ManualMask, QualityMode } from '../types/cleanup';
 import { useT } from '../i18n';
-import { formatBytes } from '../utils/format';
+import { formatBytesPrecise } from '../utils/format';
+import { buildCleanupSummary } from '../utils/cleanupSummary';
 
 interface CleanupDownloadBlockProps {
   fileInfo: BasicFileInfo | null;
@@ -16,6 +17,7 @@ interface CleanupDownloadBlockProps {
   manualMasks: ManualMask[];
   antiSearchEnabled: boolean;
   antiSearchLevel: number;
+  watermarkEnabled: boolean;
   previewDimensions: CleanupPreviewDimensions | null;
   setRemoveMetadata: (value: boolean) => void;
   setBlurFaces: (value: boolean) => void;
@@ -27,6 +29,7 @@ interface CleanupDownloadBlockProps {
   onManualMaskRemove: (id: string) => void;
   setAntiSearchEnabled: (value: boolean) => void;
   setAntiSearchLevel: (value: number) => void;
+  setWatermarkEnabled: (value: boolean) => void;
   onClean: () => Promise<void>;
   processing: boolean;
   previewDataUrl: string | null;
@@ -56,6 +59,7 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
   manualMasks,
   antiSearchEnabled,
   antiSearchLevel,
+  watermarkEnabled,
   previewDimensions,
   setRemoveMetadata,
   setBlurFaces,
@@ -67,6 +71,7 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
   onManualMaskRemove,
   setAntiSearchEnabled,
   setAntiSearchLevel,
+  setWatermarkEnabled,
   onClean,
   processing,
   previewDataUrl,
@@ -84,10 +89,10 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
 
   const estimatedLabel = useMemo(() => {
     if (estimatedSize != null) {
-      return formatBytes(estimatedSize);
+      return formatBytesPrecise(estimatedSize);
     }
     if (fileInfo) {
-      return formatBytes(fileInfo.originalSizeBytes ?? fileInfo.sizeBytes);
+      return formatBytesPrecise(fileInfo.originalSizeBytes ?? fileInfo.sizeBytes);
     }
     return t('emptyValue');
   }, [estimatedSize, fileInfo, t]);
@@ -132,18 +137,42 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
     return t('privacyDiffBlurNone');
   }, [blurFaces, manualMasks.length, peopleCount, t]);
 
-  const metadataSummary = removeMetadata
-    ? t('privacyDiffMetadataRemoved')
-    : t('privacyDiffMetadataKept');
-  const renameSummary = renameFile ? t('privacyDiffRenameOn') : t('privacyDiffRenameOff');
-  const antiSearchSummary = antiSearchEnabled
-    ? t('privacyDiffAntiSearchOn', { level: antiSearchLevel })
-    : t('privacyDiffAntiSearchOff');
-  const watermarkSummary = t('privacyDiffWatermarkOn');
-  const qualitySummary = t('privacyDiffQualityMode', {
-    mode: t(`qualityMode_${qualityMode}` as const),
-    percent: QUALITY_PERCENT[qualityMode]
-  });
+  const renameSummary = useMemo(() => {
+    if (!fileInfo) return t('privacyDiffRenameOff', { name: t('emptyValue') });
+    const extension = fileInfo.mimeType.includes('png') ? 'png' : fileInfo.mimeType.includes('webp') ? 'webp' : 'jpg';
+    const baseName = (fileInfo.originalName ?? fileInfo.file.name).replace(/\.[^/.]+$/, '');
+    if (renameFile) {
+      return t('privacyDiffRenameOn', { name: `photo-xxxxxx.${extension}` });
+    }
+    return t('privacyDiffRenameOff', { name: `${baseName}.${extension}` });
+  }, [fileInfo, renameFile, t]);
+
+  const summaryItems = useMemo(
+    () =>
+      buildCleanupSummary({
+        removeMetadata,
+        resolutionSummary,
+        blurSummary,
+        antiSearchEnabled,
+        antiSearchLevel,
+        renameSummary,
+        watermarkEnabled,
+        qualityMode,
+        qualityPercent: QUALITY_PERCENT[qualityMode],
+        t
+      }),
+    [
+      antiSearchEnabled,
+      antiSearchLevel,
+      blurSummary,
+      qualityMode,
+      removeMetadata,
+      renameSummary,
+      resolutionSummary,
+      t,
+      watermarkEnabled
+    ]
+  );
 
   const handleAntiSearchToggle = useCallback(
     (checked: boolean) => {
@@ -159,13 +188,15 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
     setManualMaskMode(true);
     setAntiSearchEnabled(true);
     setAntiSearchLevel(3);
+    setWatermarkEnabled(true);
   }, [
     setAntiSearchEnabled,
     setAntiSearchLevel,
     setBlurFaces,
     setManualMaskMode,
     setRemoveMetadata,
-    setRenameFile
+    setRenameFile,
+    setWatermarkEnabled
   ]);
 
   const toImagePoint = useCallback(
@@ -333,7 +364,7 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
           </label>
           <p className="cleanup-select__helper">{t('qualityHelper')}</p>
           <span className="cleanup-select__meta">
-            {t('qualityPercentLabel', { percent: QUALITY_PERCENT[qualityMode] })} · {t('estimatedOutputSize', { size: estimatedLabel })}
+            {t('qualityPercentLabel', { percent: QUALITY_PERCENT[qualityMode], size: estimatedLabel })}
           </span>
         </div>
         <label className="cleanup-checkbox">
@@ -428,6 +459,17 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
             </div>
           ) : null}
         </label>
+        <label className={`cleanup-checkbox ${watermarkEnabled ? 'is-active' : ''}`}>
+          <input
+            type="checkbox"
+            checked={watermarkEnabled}
+            onChange={(event) => setWatermarkEnabled(event.target.checked)}
+          />
+          <span>
+            <strong>{t('watermarkToggle')}</strong>
+            <small>{t('watermarkHint')}</small>
+          </span>
+        </label>
       </div>
 
       {manualMaskMode ? <p className="cleanup-preview__hint">{t('manualMaskDrawingHint')}</p> : null}
@@ -476,13 +518,9 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
         <div className="cleanup-summary">
           <h3 className="cleanup-summary__title">{t('privacyDiffTitle')}</h3>
           <ul>
-            <li>{metadataSummary}</li>
-            <li>{resolutionSummary}</li>
-            <li>{blurSummary}</li>
-            <li>{antiSearchSummary}</li>
-            <li>{renameSummary}</li>
-            <li>{watermarkSummary}</li>
-            <li>{qualitySummary}</li>
+            {summaryItems.map((item, index) => (
+              <li key={`${index}-${item}`}>{item}</li>
+            ))}
           </ul>
           <p className="cleanup-summary__hint">{t('privacyDiffHint')}</p>
         </div>

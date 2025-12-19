@@ -20,6 +20,8 @@ export const LanguageSwitcher: React.FC = () => {
           className={clsx({ active: lang === entry.code })}
           onClick={() => setLanguage(entry.code)}
           aria-label={entry.label}
+          aria-pressed={lang === entry.code}
+          title={entry.label}
         >
           <span aria-hidden="true">{entry.flag}</span>
           <span className="sr-only">{entry.label}</span>

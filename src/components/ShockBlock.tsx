@@ -171,7 +171,7 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
 
   const poiItems = useMemo(() => {
     if (!poiFetch.data) return [];
-    return poiFetch.data
+    return dedupePois(poiFetch.data)
       .slice(0, 5)
       .map((poi) => ({
         name: poi.name?.trim()?.length ? poi.name : t('insightPoiUnnamed', { category: translateCategory(poi.category, t) }),
@@ -182,7 +182,7 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
 
   const surveillanceItems = useMemo(() => {
     if (!surveillanceFetch.data) return [];
-    return surveillanceFetch.data
+    return dedupePois(surveillanceFetch.data)
       .slice(0, 5)
       .map((poi) => ({
         name: poi.name?.trim()?.length ? poi.name : translateCategory(poi.category, t),
@@ -505,7 +505,17 @@ const CATEGORY_KEYS: Record<string, MessageKey> = {
   fuel: 'poiCategory_fuel',
   gas_station: 'poiCategory_fuel',
   supermarket: 'poiCategory_supermarket',
-  pharmacy: 'poiCategory_pharmacy'
+  pharmacy: 'poiCategory_pharmacy',
+  fast_food: 'poiCategory_fast_food',
+  convenience: 'poiCategory_convenience',
+  bar: 'poiCategory_bar',
+  hotel: 'poiCategory_hotel',
+  school: 'poiCategory_school',
+  park: 'poiCategory_park',
+  hospital: 'poiCategory_hospital',
+  bus_stop: 'poiCategory_bus_stop',
+  subway_entrance: 'poiCategory_subway',
+  station: 'poiCategory_station'
 };
 
 function translateCategory(category: string, t: ReturnType<typeof useT>): string {
@@ -514,5 +524,26 @@ function translateCategory(category: string, t: ReturnType<typeof useT>): string
   if (key) {
     return t(key);
   }
-  return category;
+  return t('poiCategory_other', { category: toReadableCategory(normalized) });
+}
+
+function toReadableCategory(value: string): string {
+  return value
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function dedupePois(items: PoiResult[]): PoiResult[] {
+  const seen = new Set<string>();
+  return items.filter((poi) => {
+    const name = poi.name?.trim().toLowerCase() ?? '';
+    const distance = Number.isFinite(poi.distance) ? Math.round(poi.distance) : 0;
+    const key = `${name || poi.category.toLowerCase()}-${distance}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }

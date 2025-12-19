@@ -92,6 +92,7 @@ const App: React.FC = () => {
   const [antiSearchEnabled, setAntiSearchEnabled] = useState(false);
   const [antiSearchLevel, setAntiSearchLevel] = useState(2);
   const [antiSearchParams, setAntiSearchParams] = useState<AntiSearchParams | null>(null);
+  const [watermarkEnabled, setWatermarkEnabled] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
@@ -100,7 +101,7 @@ const App: React.FC = () => {
   const [previewDimensions, setPreviewDimensions] = useState<CleanupPreviewDimensions | null>(null);
   const reduceColor = antiSearchEnabled && antiSearchLevel === 3;
   const prnuCleanup = removeMetadata;
-  const watermark = true;
+  const watermark = watermarkEnabled;
 
   const formatCountLabel = useCallback(
     (count: number, kind: 'person' | 'vehicle' | 'animal') => {
@@ -156,6 +157,7 @@ const App: React.FC = () => {
       setAntiSearchEnabled(false);
       setAntiSearchParams(null);
       setAntiSearchLevel(2);
+      setWatermarkEnabled(false);
       setPreviewDimensions(null);
       await processFile(file);
     },
@@ -231,10 +233,10 @@ const App: React.FC = () => {
       antiSearchEnabled,
       antiSearchParams,
       reduceColor,
-      watermark,
-      prnuCleanup,
-      t
-    ]
+    watermark,
+    prnuCleanup,
+    t
+  ]
   );
 
   const handleDownload = useCallback(async () => {
@@ -351,6 +353,7 @@ const App: React.FC = () => {
     antiSearchParams,
     reduceColor,
     watermark,
+    watermarkEnabled,
     prnuCleanup,
     qualityMode,
     createProcessedCanvas
@@ -452,6 +455,8 @@ const App: React.FC = () => {
         setAntiSearchEnabled={setAntiSearchEnabled}
         antiSearchLevel={antiSearchLevel}
         setAntiSearchLevel={setAntiSearchLevel}
+        watermarkEnabled={watermarkEnabled}
+        setWatermarkEnabled={setWatermarkEnabled}
         onClean={handleDownload}
         processing={processing}
         previewDataUrl={previewDataUrl}
