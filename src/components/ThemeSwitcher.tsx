@@ -6,6 +6,7 @@ import { useT, type MessageKey } from '../i18n';
 const options: Array<{ mode: ThemeMode; icon: string; labelKey: MessageKey }> = [
   { mode: 'light', icon: '☀️', labelKey: 'themeLight' },
   { mode: 'dark', icon: '🌙', labelKey: 'themeDark' },
+  { mode: 'accessible', icon: '🟡', labelKey: 'themeAccessible' },
   { mode: 'system', icon: '🌓', labelKey: 'themeSystem' }
 ];
 
@@ -21,6 +22,8 @@ export const ThemeSwitcher: React.FC = () => {
           className={clsx({ active: mode === option.mode })}
           onClick={() => setMode(option.mode)}
           aria-label={t(option.labelKey)}
+          aria-pressed={mode === option.mode}
+          title={t(option.labelKey)}
         >
           <span aria-hidden="true">{option.icon}</span>
           <span className="sr-only">{t(option.labelKey)}</span>

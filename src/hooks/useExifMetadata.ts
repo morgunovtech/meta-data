@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import exifr from 'exifr';
 import { useT } from '../i18n';
 import type { BasicFileInfo, StructuredMetadata } from '../types/metadata';
 import { inferOrientation } from '../utils/orientation';
 import { computeMetadataCompleteness } from '../utils/metadataScore';
+import { extractMetadataFromOriginal } from '../utils/heic';
 
 interface UseExifMetadataResult {
   metadata: StructuredMetadata | null;
@@ -29,17 +29,8 @@ export function useExifMetadata(fileInfo: BasicFileInfo | null): UseExifMetadata
       setLoading(true);
       setError(null);
       try {
-        const [exifData, xmpData, iptcData, iccData, gpsRaw] = await Promise.all([
-          exifr.parse(fileInfo.file, {
-            exif: true,
-            gps: true,
-            translateKeys: true
-          }),
-          safeExtract(() => exifr.xmp(fileInfo.file)),
-          safeExtract(() => exifr.iptc(fileInfo.file)),
-          safeExtract(() => exifr.icc(fileInfo.file)),
-          safeExtract(() => exifr.gps(fileInfo.file))
-        ]);
+        const sourceFile = fileInfo.originalFile ?? fileInfo.file;
+        const { exifData, xmpData, iptcData, iccData, gpsRaw } = await extractMetadataFromOriginal(sourceFile);
 
         if (!active) return;
 
@@ -245,17 +236,6 @@ function normalizeGps(
     accuracy,
     heading
   };
-}
-
-async function safeExtract<T>(fn: () => Promise<T | undefined>): Promise<T | undefined> {
-  try {
-    const result = await fn();
-    if (result == null) return undefined;
-    return result;
-  } catch (error) {
-    console.warn('metadata-optional-extract', error);
-    return undefined;
-  }
 }
 
 function normalizeOffset(offset: unknown): string | undefined {

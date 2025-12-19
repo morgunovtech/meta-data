@@ -13,8 +13,8 @@ export const MetadataPanel: React.FC<MetadataPanelProps> = ({ fileInfo, metadata
   const t = useT();
   const { lang } = useI18n();
 
-  const fileName = fileInfo.file.name.replace(/\.[^/.]+$/, '');
-  const { typeKey, format } = describeFileType(fileInfo.mimeType, fileInfo.file.name);
+  const displayMime = fileInfo.originalMimeType ?? fileInfo.mimeType;
+  const { typeKey, format } = describeFileType(displayMime, fileInfo.originalName ?? fileInfo.file.name);
   const typeLabel = t(typeKey as MessageKey);
   const orientationKey = metadata?.orientation
     ? `orientation${capitalize(metadata.orientation)}`
@@ -44,13 +44,7 @@ export const MetadataPanel: React.FC<MetadataPanelProps> = ({ fileInfo, metadata
         : 'cameraPositionUnknownShort';
     const positionLabel = t(positionKey as MessageKey);
     const os = metadata.software ?? undefined;
-    const focal = metadata.focalLength
-      ? t('cameraFocalLength', { value: metadata.focalLength.toFixed(1) })
-      : null;
-    const aperture = metadata.aperture ? t('cameraAperture', { value: metadata.aperture.toFixed(1) }) : null;
-    const lensDetails = [focal, aperture].filter(Boolean).join(', ');
-
-    const parts = [makeModel || undefined, os, positionLabel, lensDetails || undefined].filter(
+    const parts = [makeModel || undefined, os, positionLabel].filter(
       (segment): segment is string => Boolean(segment && segment.length > 0)
     );
 
@@ -58,21 +52,41 @@ export const MetadataPanel: React.FC<MetadataPanelProps> = ({ fileInfo, metadata
   }, [metadata, t]);
 
   const shotDate = metadata ? formatDetailedDate(metadata.shotDate, lang) : undefined;
+  const basicsNotes = [
+    t('basicInfoTimelineTip'),
+    t('basicInfoFingerprintTip'),
+    t('basicInfoDetailTip'),
+    t('basicInfoMetadataCountTip'),
+    t('basicInfoFormatSizeTip')
+  ];
 
   return (
     <aside className="panel" aria-label={t('basicInfoTitle')}>
       <h2 className="section-title">{t('basicInfoTitle')}</h2>
+      <p className="section-subtitle">{t('basicInfoSubtitle')}</p>
       <div className="metadata-grid">
-        <MetadataItem label={t('nameLabel')} value={fileName || fileInfo.file.name} />
+        <MetadataItem label={t('nameLabelSource')} value={fileInfo.originalName ?? fileInfo.file.name} />
         <MetadataItem label={t('typeLabel')} value={typeLabel} />
-        <MetadataItem label={t('formatLabel')} value={format} />
-        <MetadataItem label={t('sizeLabel')} value={formatBytes(fileInfo.sizeBytes)} />
+        <MetadataItem label={t('formatLabelSource')} value={format} />
+        <MetadataItem
+          label={t('sizeLabelSource')}
+          value={formatBytes(fileInfo.originalSizeBytes ?? fileInfo.sizeBytes)}
+        />
         <MetadataItem label={t('resolutionLabel')} value={formatDimensions(fileInfo.width, fileInfo.height)} />
         <MetadataItem label={t('megapixelsLabel')} value={formatMegapixels(fileInfo.width, fileInfo.height)} />
         <MetadataItem label={t('orientationLabel')} value={t(orientationKey as MessageKey)} />
         <MetadataItem label={t('metadataFieldsLabel')} value={formattedFieldCount} />
         <MetadataItem label={t('shotDate')} value={shotDate ?? t('emptyValue')} />
         <MetadataItem label={t('cameraSummaryLabel')} value={cameraSummary ?? t('emptyValue')} />
+      </div>
+      <div className="metadata-notes" aria-label={t('basicInfoNotesTitle')}>
+        <p className="metadata-notes__title">{t('basicInfoNotesTitle')}</p>
+        <ul>
+          {fileInfo.wasConverted ? <li>{t('basicInfoHeicNote')}</li> : null}
+          {basicsNotes.map((note) => (
+            <li key={note}>{note}</li>
+          ))}
+        </ul>
       </div>
     </aside>
   );

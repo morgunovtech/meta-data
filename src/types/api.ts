@@ -18,15 +18,6 @@ export interface ReverseGeocodeResult {
   lon: number;
 }
 
-export interface TimezoneHolidayResult {
-  timezone: string;
-  localTimeIso: string;
-  holiday?: {
-    name: string;
-    countryCode: string;
-  };
-}
-
 export interface HistoricalWeatherResult {
   temperature: number;
   precipitation: number;
@@ -41,12 +32,3 @@ export interface PoiResult {
   distance: number;
 }
 
-export interface ImageUniquenessMatch {
-  label: string;
-  similarity: number;
-}
-
-export interface ImageUniquenessResult {
-  score: number;
-  matches: ImageUniquenessMatch[];
-}

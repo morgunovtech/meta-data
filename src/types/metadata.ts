@@ -7,6 +7,14 @@ export interface BasicFileInfo {
   aspectRatio: number;
   sizeBytes: number;
   mimeType: string;
+  originalFile?: File;
+  originalMimeType?: string;
+  originalSizeBytes?: number;
+  originalName?: string;
+  originalWidth?: number;
+  originalHeight?: number;
+  wasConverted?: boolean;
+  processedSizeBytes?: number;
 }
 
 export interface MetadataGroups {

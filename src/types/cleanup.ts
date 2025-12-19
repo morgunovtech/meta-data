@@ -1,9 +1,12 @@
-export interface ManualMask {
-  id: string;
+export interface ManualMaskPoint {
   x: number;
   y: number;
-  width: number;
-  height: number;
+}
+
+export interface ManualMask {
+  id: string;
+  points: ManualMaskPoint[];
+  radius: number;
 }
 
 export interface AntiSearchParams {
@@ -22,8 +25,6 @@ export interface AntiSearchParams {
   hueShift: number;
   warpStrength: number;
 }
-
-export type PrivacyLevel = 'low' | 'medium' | 'high';
 
 export type QualityMode = 'low' | 'medium' | 'original';
 

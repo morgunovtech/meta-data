@@ -7,9 +7,15 @@ interface PreviewViewerProps {
   fileInfo: BasicFileInfo;
   detections: BoundingBox[];
   sceneDescription: string;
+  progress?: { label: string; value: number } | null;
 }
 
-export const PreviewViewer: React.FC<PreviewViewerProps> = ({ fileInfo, detections, sceneDescription }) => {
+export const PreviewViewer: React.FC<PreviewViewerProps> = ({
+  fileInfo,
+  detections,
+  sceneDescription,
+  progress
+}) => {
   const t = useT();
   const [fullScreen, setFullScreen] = useState(false);
 
@@ -51,11 +57,25 @@ export const PreviewViewer: React.FC<PreviewViewerProps> = ({ fileInfo, detectio
 
   return (
     <div className="preview-panel">
-      <div className="preview-wrapper" role="img" aria-label={fileInfo.file.name} onClick={() => setFullScreen(true)}>
-        <img src={fileInfo.thumbnailUrl} alt={fileInfo.file.name} style={{ width: '100%', height: 'auto' }} />
+      <div
+        className="preview-wrapper"
+        role="img"
+        aria-label={fileInfo.file.name}
+        onClick={() => setFullScreen(true)}
+        style={{ aspectRatio: `${fileInfo.width} / ${fileInfo.height}` }}
+      >
+        <img src={fileInfo.thumbnailUrl} alt={fileInfo.file.name} className="preview-image" />
         <div style={{ position: 'absolute', inset: 0 }}>{overlays}</div>
       </div>
       <p className="preview-description">{sceneDescription}</p>
+      {progress ? (
+        <div className="progress-row" aria-live="polite">
+          <div className="progress-text">{progress.label}</div>
+          <div className="progress-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress.value * 100)}>
+            <span style={{ width: `${Math.min(100, Math.max(0, progress.value * 100))}%` }} />
+          </div>
+        </div>
+      ) : null}
       {fullScreen ? (
         <div className="fullscreen-viewer" onClick={() => setFullScreen(false)}>
           <div className="fullscreen-inner">

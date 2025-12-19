@@ -6,6 +6,15 @@ export function formatBytes(bytes: number): string {
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[exponent]}`;
 }
 
+export function formatBytesPrecise(bytes: number, fractionDigits = 2): string {
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / Math.pow(1024, exponent);
+  const precision = exponent === 0 ? 0 : Math.min(2, Math.max(0, fractionDigits));
+  return `${value.toFixed(precision)} ${units[exponent]}`;
+}
+
 export function formatMegapixels(width: number, height: number): string {
   const mp = (width * height) / 1_000_000;
   return mp.toFixed(2);
@@ -32,8 +41,8 @@ export function formatDetailedDate(value: string | Date | undefined, locale?: st
   if (!value) return undefined;
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return undefined;
-  try {
-    return new Intl.DateTimeFormat(locale, {
+  const format = (resolvedTimeZone?: string) =>
+    new Intl.DateTimeFormat(locale, {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -41,18 +50,12 @@ export function formatDetailedDate(value: string | Date | undefined, locale?: st
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
-      timeZone
+      timeZone: resolvedTimeZone
     }).format(date);
+  try {
+    return capitalizeFirstLetter(format(timeZone));
   } catch (error) {
-    return new Intl.DateTimeFormat(locale, {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    }).format(date);
+    return capitalizeFirstLetter(format(undefined));
   }
 }
 
@@ -88,6 +91,11 @@ export function formatNumber(value?: number, fractionDigits = 1): string | undef
 
 export function formatExactBytes(bytes: number): string {
   return new Intl.NumberFormat(undefined).format(bytes);
+}
+
+function capitalizeFirstLetter(value: string): string {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 const MIME_FORMATS: Record<string, string> = {
