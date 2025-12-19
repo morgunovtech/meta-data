@@ -32,8 +32,8 @@ export function formatDetailedDate(value: string | Date | undefined, locale?: st
   if (!value) return undefined;
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return undefined;
-  try {
-    return new Intl.DateTimeFormat(locale, {
+  const format = (resolvedTimeZone?: string) =>
+    new Intl.DateTimeFormat(locale, {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -41,18 +41,12 @@ export function formatDetailedDate(value: string | Date | undefined, locale?: st
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
-      timeZone
+      timeZone: resolvedTimeZone
     }).format(date);
+  try {
+    return capitalizeFirstLetter(format(timeZone));
   } catch (error) {
-    return new Intl.DateTimeFormat(locale, {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    }).format(date);
+    return capitalizeFirstLetter(format(undefined));
   }
 }
 
@@ -88,6 +82,11 @@ export function formatNumber(value?: number, fractionDigits = 1): string | undef
 
 export function formatExactBytes(bytes: number): string {
   return new Intl.NumberFormat(undefined).format(bytes);
+}
+
+function capitalizeFirstLetter(value: string): string {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 const MIME_FORMATS: Record<string, string> = {

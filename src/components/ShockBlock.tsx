@@ -7,7 +7,7 @@ import { ErrorBanner } from './ErrorBanner';
 import { MapBlock } from './MapBlock';
 import { googleMapsLink, streetViewLink } from '../utils/mapLinks';
 import { formatDetailedDate, formatMeters, formatNumber } from '../utils/format';
-import { extractSoftware, inferCameraPosition, inferMovement, summarizeWeather } from '../utils/insights';
+import { inferMovement, summarizeWeather } from '../utils/insights';
 
 interface ShockBlockProps {
   metadata: StructuredMetadata | null;
@@ -122,8 +122,6 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
     surveillanceFetch.request(`/api/surveillance-candidates?lat=${coords.lat}&lon=${coords.lon}`);
   }, [coords]);
 
-  const software = useMemo(() => extractSoftware(metadata), [metadata]);
-  const cameraPosition = useMemo(() => inferCameraPosition(metadata), [metadata]);
   const movement = useMemo(() => inferMovement(metadata), [metadata]);
   const weatherSummary = useMemo(() => summarizeWeather(weatherFetch.data ?? null), [weatherFetch.data]);
   const shotTimeLabel = useMemo(() => {
@@ -296,27 +294,6 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
       });
     }
 
-    if (metadata?.cameraMake || metadata?.cameraModel || software) {
-      const deviceSummary = [metadata?.cameraMake, metadata?.cameraModel].filter(Boolean).join(' ');
-      const positionKey =
-        cameraPosition === 'front'
-          ? 'insightCameraFront'
-          : cameraPosition === 'rear'
-          ? 'insightCameraRear'
-          : 'insightCameraUnknown';
-      const details = [
-        deviceSummary,
-        software,
-        cameraPosition ? t(positionKey as MessageKey) : null
-      ].filter(Boolean);
-      list.push({
-        id: 'device',
-        severity: 'high',
-        title: t('insightDeviceTitle'),
-        content: <p>{t('insightDeviceSummary', { summary: details.join(', ') })}</p>
-      });
-    }
-
     if (movement) {
       const speed = movement.speedKmh ? formatNumber(movement.speedKmh, 1) : undefined;
       const key = movement.moving ? 'insightMovementMoving' : 'insightMovementStill';
@@ -424,10 +401,6 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
     lang,
     locationTitle,
     shotTimeLabel,
-    metadata?.cameraMake,
-    metadata?.cameraModel,
-    software,
-    cameraPosition,
     movement,
     weatherFetch.loading,
     weatherFetch.error,

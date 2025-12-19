@@ -13,11 +13,8 @@ export const MetadataPanel: React.FC<MetadataPanelProps> = ({ fileInfo, metadata
   const t = useT();
   const { lang } = useI18n();
 
-  const displayName = (fileInfo.originalName ?? fileInfo.file.name).replace(/\.[^/.]+$/, '');
   const displayMime = fileInfo.originalMimeType ?? fileInfo.mimeType;
-  const workingMime = fileInfo.mimeType;
   const { typeKey, format } = describeFileType(displayMime, fileInfo.originalName ?? fileInfo.file.name);
-  const workingFormat = describeFileType(workingMime, fileInfo.file.name).format;
   const typeLabel = t(typeKey as MessageKey);
   const orientationKey = metadata?.orientation
     ? `orientation${capitalize(metadata.orientation)}`
@@ -47,13 +44,7 @@ export const MetadataPanel: React.FC<MetadataPanelProps> = ({ fileInfo, metadata
         : 'cameraPositionUnknownShort';
     const positionLabel = t(positionKey as MessageKey);
     const os = metadata.software ?? undefined;
-    const focal = metadata.focalLength
-      ? t('cameraFocalLength', { value: metadata.focalLength.toFixed(1) })
-      : null;
-    const aperture = metadata.aperture ? t('cameraAperture', { value: metadata.aperture.toFixed(1) }) : null;
-    const lensDetails = [focal, aperture].filter(Boolean).join(', ');
-
-    const parts = [makeModel || undefined, os, positionLabel, lensDetails || undefined].filter(
+    const parts = [makeModel || undefined, os, positionLabel].filter(
       (segment): segment is string => Boolean(segment && segment.length > 0)
     );
 
@@ -75,10 +66,8 @@ export const MetadataPanel: React.FC<MetadataPanelProps> = ({ fileInfo, metadata
       <p className="section-subtitle">{t('basicInfoSubtitle')}</p>
       <div className="metadata-grid">
         <MetadataItem label={t('nameLabelSource')} value={fileInfo.originalName ?? fileInfo.file.name} />
-        <MetadataItem label={t('nameLabelWorking')} value={displayName || fileInfo.file.name} />
         <MetadataItem label={t('typeLabel')} value={typeLabel} />
         <MetadataItem label={t('formatLabelSource')} value={format} />
-        <MetadataItem label={t('formatLabelWorking')} value={workingFormat} />
         <MetadataItem
           label={t('sizeLabelSource')}
           value={formatBytes(fileInfo.originalSizeBytes ?? fileInfo.sizeBytes)}
