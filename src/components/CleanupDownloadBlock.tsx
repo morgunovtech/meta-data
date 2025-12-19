@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { BoundingBox } from '../types/detection';
 import type { BasicFileInfo } from '../types/metadata';
-import type { CleanupPreviewDimensions, ManualMask, PresetKey, QualityMode } from '../types/cleanup';
+import type { CleanupPreviewDimensions, ManualMask, QualityMode } from '../types/cleanup';
 import { useT } from '../i18n';
 import { formatBytes } from '../utils/format';
 
@@ -27,8 +27,6 @@ interface CleanupDownloadBlockProps {
   onManualMaskRemove: (id: string) => void;
   setAntiSearchEnabled: (value: boolean) => void;
   setAntiSearchLevel: (value: number) => void;
-  preset: PresetKey;
-  onPresetChange: (preset: PresetKey) => void;
   onClean: () => Promise<void>;
   processing: boolean;
   previewDataUrl: string | null;
@@ -69,8 +67,6 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
   onManualMaskRemove,
   setAntiSearchEnabled,
   setAntiSearchLevel,
-  preset,
-  onPresetChange,
   onClean,
   processing,
   previewDataUrl,
@@ -155,6 +151,22 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
     },
     [setAntiSearchEnabled]
   );
+
+  const handleApplyAll = useCallback(() => {
+    setRemoveMetadata(true);
+    setRenameFile(true);
+    setBlurFaces(true);
+    setManualMaskMode(true);
+    setAntiSearchEnabled(true);
+    setAntiSearchLevel(3);
+  }, [
+    setAntiSearchEnabled,
+    setAntiSearchLevel,
+    setBlurFaces,
+    setManualMaskMode,
+    setRemoveMetadata,
+    setRenameFile
+  ]);
 
   const toImagePoint = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -300,39 +312,30 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
   return (
     <section className="panel cleanup-panel">
       <div className="cleanup-panel__header">
-        <h2 className="section-title">{t('cleanupTitle')}</h2>
+        <div className="cleanup-panel__title">
+          <h2 className="section-title">{t('cleanupTitle')}</h2>
+          <button type="button" className="button button--ghost" onClick={handleApplyAll}>
+            {t('cleanupApplyAll')}
+          </button>
+        </div>
         <p className="cleanup-panel__hint">{t('cleanupHint')}</p>
       </div>
 
-      <div className="cleanup-presets">
-        <label className="cleanup-select">
-          <span>{t('presetLabel')}</span>
-          <select value={preset} onChange={(event) => onPresetChange(event.target.value as PresetKey)}>
-            <option value="none">{t('presetNone')}</option>
-            <option value="social">{t('presetSocial')}</option>
-            <option value="work">{t('presetWork')}</option>
-            <option value="proof">{t('presetProof')}</option>
-            <option value="personal">{t('presetPersonal')}</option>
-          </select>
-        </label>
-      </div>
-
-      <div className="cleanup-quality">
-        <label className="cleanup-select">
-          <span>{t('qualityLabel')}</span>
-          <select value={qualityMode} onChange={(event) => setQualityMode(event.target.value as QualityMode)}>
-            <option value="low">{t('qualityMode_low')}</option>
-            <option value="medium">{t('qualityMode_medium')}</option>
-            <option value="original">{t('qualityMode_original')}</option>
-          </select>
-        </label>
-        <p className="cleanup-select__helper">{t('qualityHelper')}</p>
-        <span className="cleanup-select__meta">
-          {t('qualityPercentLabel', { percent: QUALITY_PERCENT[qualityMode] })} · {t('estimatedOutputSize', { size: estimatedLabel })}
-        </span>
-      </div>
-
       <div className="cleanup-options cleanup-options--grid">
+        <div className="cleanup-card cleanup-card--select">
+          <label className="cleanup-select">
+            <span>{t('qualityLabel')}</span>
+            <select value={qualityMode} onChange={(event) => setQualityMode(event.target.value as QualityMode)}>
+              <option value="low">{t('qualityMode_low')}</option>
+              <option value="medium">{t('qualityMode_medium')}</option>
+              <option value="original">{t('qualityMode_original')}</option>
+            </select>
+          </label>
+          <p className="cleanup-select__helper">{t('qualityHelper')}</p>
+          <span className="cleanup-select__meta">
+            {t('qualityPercentLabel', { percent: QUALITY_PERCENT[qualityMode] })} · {t('estimatedOutputSize', { size: estimatedLabel })}
+          </span>
+        </div>
         <label className="cleanup-checkbox">
           <input
             type="checkbox"
@@ -357,6 +360,21 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
             <strong>{t('blurFaces')}</strong>
             <small>{t('blurFacesHint')}</small>
           </span>
+          {blurFaces ? (
+            <div className="cleanup-slider">
+              <label htmlFor="blur-strength-faces">{t('blurStrengthLabel')}</label>
+              <input
+                id="blur-strength-faces"
+                type="range"
+                min="8"
+                max="64"
+                step="1"
+                value={blurStrength}
+                onChange={(event) => setBlurStrength(Number(event.target.value))}
+              />
+              <span className="cleanup-slider__meta">{t('blurStrengthValue', { value: Math.round(blurStrength) })}</span>
+            </div>
+          ) : null}
         </label>
         <label className={`cleanup-checkbox ${manualMaskMode ? 'is-active' : ''}`}>
           <input
@@ -368,6 +386,21 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
             <strong>{t('manualMaskToggle')}</strong>
             <small>{t('manualMaskHint')}</small>
           </span>
+          {manualMaskMode ? (
+            <div className="cleanup-slider">
+              <label htmlFor="blur-strength-manual">{t('blurStrengthLabel')}</label>
+              <input
+                id="blur-strength-manual"
+                type="range"
+                min="8"
+                max="64"
+                step="1"
+                value={blurStrength}
+                onChange={(event) => setBlurStrength(Number(event.target.value))}
+              />
+              <span className="cleanup-slider__meta">{t('blurStrengthValue', { value: Math.round(blurStrength) })}</span>
+            </div>
+          ) : null}
         </label>
         <label className={`cleanup-checkbox ${antiSearchEnabled ? 'is-active' : ''}`}>
           <input
@@ -379,28 +412,25 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
             <strong>{t('antiSearchLabel')}</strong>
             <small>{t('antiSearchHint')}</small>
           </span>
+          {antiSearchEnabled ? (
+            <div className="cleanup-slider">
+              <label htmlFor="anti-search-level">{t('antiSearchLevelLabel')}</label>
+              <input
+                id="anti-search-level"
+                type="range"
+                min="1"
+                max="3"
+                step="1"
+                value={antiSearchLevel}
+                onChange={(event) => setAntiSearchLevel(Number(event.target.value))}
+              />
+              <span className="cleanup-slider__meta">{t('antiSearchLevelValue', { value: antiSearchLevel })}</span>
+            </div>
+          ) : null}
         </label>
       </div>
 
       {manualMaskMode ? <p className="cleanup-preview__hint">{t('manualMaskDrawingHint')}</p> : null}
-
-      <div className="cleanup-control-row">
-        {(blurFaces || manualMasks.length > 0) && (
-          <div className="range-line range-line--compact">
-            <label htmlFor="blur-strength">{t('blurStrengthLabel')}</label>
-            <input
-              id="blur-strength"
-              type="range"
-              min="8"
-              max="64"
-              step="1"
-              value={blurStrength}
-              onChange={(event) => setBlurStrength(Number(event.target.value))}
-            />
-            <span className="range-line__meta">{t('blurStrengthValue', { value: Math.round(blurStrength) })}</span>
-          </div>
-        )}
-      </div>
 
       {antiSearchEnabled ? (
         <p className="notice notice--muted">{t('antiSearchActiveHint')}</p>
@@ -408,21 +438,6 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
         <p className="notice notice--muted">{t('antiSearchOffHint')}</p>
       )}
 
-      {antiSearchEnabled ? (
-        <div className="range-line range-line--compact">
-          <label htmlFor="anti-search-level">{t('antiSearchLevelLabel')}</label>
-          <input
-            id="anti-search-level"
-            type="range"
-            min="1"
-            max="3"
-            step="1"
-            value={antiSearchLevel}
-            onChange={(event) => setAntiSearchLevel(Number(event.target.value))}
-          />
-          <span className="range-line__meta">{t('antiSearchLevelValue', { value: antiSearchLevel })}</span>
-        </div>
-      ) : null}
 
       <div className="cleanup-diff-grid">
         <figure className="cleanup-diff-grid__preview">

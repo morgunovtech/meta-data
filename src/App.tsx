@@ -12,7 +12,7 @@ import { useImageAnalysis } from './hooks/useImageAnalysis';
 import type { ManualCoordinates } from './types/metadata';
 import { useI18n, useT } from './i18n';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
-import type { AntiSearchParams, CleanupPreviewDimensions, ManualMask, PresetKey, QualityMode } from './types/cleanup';
+import type { AntiSearchParams, CleanupPreviewDimensions, ManualMask, QualityMode } from './types/cleanup';
 import {
   applyAntiSearch,
   applyColorReduction,
@@ -46,48 +46,6 @@ const blurDefault = 28;
 const PREVIEW_MAX_DIMENSION = 2400;
 
 const RU_PLURAL_RANGE = { few: [2, 3, 4], many: [0, 5, 6, 7, 8, 9] };
-
-const presetConfig: Record<Exclude<PresetKey, 'none'>, {
-  removeMetadata: boolean;
-  blurFaces: boolean;
-  antiSearchEnabled: boolean;
-  antiSearchLevel: number;
-  qualityMode: QualityMode;
-  renameFile: boolean;
-}> = {
-  social: {
-    removeMetadata: true,
-    blurFaces: true,
-    antiSearchEnabled: true,
-    antiSearchLevel: 2,
-    qualityMode: 'medium',
-    renameFile: true
-  },
-  work: {
-    removeMetadata: true,
-    blurFaces: false,
-    antiSearchEnabled: true,
-    antiSearchLevel: 1,
-    qualityMode: 'medium',
-    renameFile: true
-  },
-  proof: {
-    removeMetadata: true,
-    blurFaces: false,
-    antiSearchEnabled: false,
-    antiSearchLevel: 1,
-    qualityMode: 'original',
-    renameFile: false
-  },
-  personal: {
-    removeMetadata: true,
-    blurFaces: true,
-    antiSearchEnabled: true,
-    antiSearchLevel: 2,
-    qualityMode: 'medium',
-    renameFile: true
-  }
-};
 
 function qualityForMode(mode: QualityMode): number {
   switch (mode) {
@@ -134,7 +92,6 @@ const App: React.FC = () => {
   const [antiSearchEnabled, setAntiSearchEnabled] = useState(false);
   const [antiSearchLevel, setAntiSearchLevel] = useState(2);
   const [antiSearchParams, setAntiSearchParams] = useState<AntiSearchParams | null>(null);
-  const [preset, setPreset] = useState<PresetKey>('none');
   const [processing, setProcessing] = useState(false);
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
@@ -182,29 +139,6 @@ const App: React.FC = () => {
     }
   }, [antiSearchEnabled, antiSearchLevel]);
 
-  useEffect(() => {
-    if (preset === 'none') return;
-    const config = presetConfig[preset];
-    if (
-      config.removeMetadata !== removeMetadata ||
-      config.blurFaces !== blurFaces ||
-      config.antiSearchEnabled !== antiSearchEnabled ||
-      config.antiSearchLevel !== antiSearchLevel ||
-      config.qualityMode !== qualityMode ||
-      config.renameFile !== renameFile
-    ) {
-      setPreset('none');
-    }
-  }, [
-    antiSearchEnabled,
-    antiSearchLevel,
-    blurFaces,
-    preset,
-    qualityMode,
-    removeMetadata,
-    renameFile
-  ]);
-
   const handleFile = useCallback(
     async (file: File) => {
       setManualCoords(null);
@@ -222,7 +156,6 @@ const App: React.FC = () => {
       setAntiSearchEnabled(false);
       setAntiSearchParams(null);
       setAntiSearchLevel(2);
-      setPreset('none');
       setPreviewDimensions(null);
       await processFile(file);
     },
@@ -434,21 +367,6 @@ const App: React.FC = () => {
     setManualMasks((current) => current.filter((mask) => mask.id !== id));
   }, []);
 
-  const applyPreset = useCallback(
-    (key: PresetKey) => {
-      setPreset(key);
-      if (key === 'none') return;
-      const config = presetConfig[key];
-      setRemoveMetadata(config.removeMetadata);
-      setBlurFaces(config.blurFaces);
-      setAntiSearchEnabled(config.antiSearchEnabled);
-      setAntiSearchLevel(config.antiSearchLevel);
-      setQualityMode(config.qualityMode);
-      setRenameFile(config.renameFile);
-    },
-    []
-  );
-
   const sceneDescription = useMemo(() => {
     if (!analysisSummary) {
       if (analysisLoading) return t('sceneDescriptionLoading');
@@ -534,8 +452,6 @@ const App: React.FC = () => {
         setAntiSearchEnabled={setAntiSearchEnabled}
         antiSearchLevel={antiSearchLevel}
         setAntiSearchLevel={setAntiSearchLevel}
-        preset={preset}
-        onPresetChange={applyPreset}
         onClean={handleDownload}
         processing={processing}
         previewDataUrl={previewDataUrl}

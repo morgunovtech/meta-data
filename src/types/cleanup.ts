@@ -32,5 +32,3 @@ export interface CleanupPreviewDimensions {
   width: number;
   height: number;
 }
-
-export type PresetKey = 'none' | 'social' | 'work' | 'proof' | 'personal';
