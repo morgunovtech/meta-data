@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "test:format": "tsx scripts/formatBytes.test.ts",
-    "test:summary": "tsx scripts/cleanupSummary.test.ts"
+    "test:summary": "tsx scripts/cleanupSummary.test.ts",
+    "test:insights": "tsx scripts/insightsCompact.test.ts"
   },
   "dependencies": {
     "@tensorflow-models/coco-ssd": "^2.2.2",
