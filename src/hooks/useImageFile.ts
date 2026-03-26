@@ -24,8 +24,14 @@ function inferMimeFromName(name: string): string | null {
 async function sniffHeic(file: File): Promise<boolean> {
   try {
     const buffer = await file.slice(0, 24).arrayBuffer();
-    const signature = new TextDecoder().decode(new Uint8Array(buffer));
-    return /ftypheic|ftypheix|ftyphevc|ftypmif1|ftypmsf1/i.test(signature);
+    const bytes = new Uint8Array(buffer);
+    // Check for 'ftyp' box marker at offset 4
+    if (bytes.length < 12) return false;
+    const ftyp = bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70;
+    if (!ftyp) return false;
+    // Read the brand as ASCII
+    const brand = String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]).toLowerCase();
+    return ['heic', 'heix', 'hevc', 'mif1', 'msf1'].includes(brand);
   } catch (error) {
     console.warn('heic-sniff-failed', error);
     return false;
@@ -116,6 +122,7 @@ export function useImageFile() {
         const { url: thumbnailUrl, width, height } = await makeThumbnail(objectUrl);
         const pixelCount = width * height;
         if (pixelCount > MAX_PIXEL_COUNT) {
+          revokeObjectUrl();
           setError(t('fileTooLargeResolution'));
           setLoading(false);
           return;

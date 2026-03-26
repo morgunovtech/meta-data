@@ -90,8 +90,10 @@ export function useExifMetadata(fileInfo: BasicFileInfo | null): UseExifMetadata
         setMetadata(structured);
       } catch (err) {
         console.error('metadata-parse', err);
-        setError(t('corruptedFile'));
-        setMetadata(null);
+        if (active) {
+          setError(t('corruptedFile'));
+          setMetadata(null);
+        }
       } finally {
         if (active) {
           setLoading(false);
@@ -106,9 +108,7 @@ export function useExifMetadata(fileInfo: BasicFileInfo | null): UseExifMetadata
     };
   }, [fileInfo, t]);
 
-  const resultError = useMemo(() => error, [error]);
-
-  return { metadata, loading, error: resultError };
+  return { metadata, loading, error };
 }
 
 function pickFirst<T>(source: Record<string, unknown> | undefined, keys: string[]): T | undefined {
@@ -146,7 +146,7 @@ function normalizeDateValue(value: unknown, offsetValue?: unknown): string | und
   if (typeof value === 'string') {
     const trimmed = value.trim();
     if (!trimmed) return undefined;
-    const normalized = trimmed.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3').replace(' ', 'T');
+    const normalized = trimmed.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3').replace(/\s+/, 'T');
     const offset = normalizeOffset(offsetValue);
     const candidate = offset ? `${normalized}${offset}` : normalized;
     const parsed = new Date(candidate);

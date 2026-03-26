@@ -12,6 +12,7 @@ interface MapBlockProps {
 export const MapBlock: React.FC<MapBlockProps> = ({ lat, lon, accuracy }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const markerRef = useRef<maplibregl.Marker | null>(null);
 
   useEffect(() => {
     let map: maplibregl.Map | null = null;
@@ -41,6 +42,7 @@ export const MapBlock: React.FC<MapBlockProps> = ({ lat, lon, accuracy }) => {
         mapRef.current = map;
         map.addControl(new maplibre.NavigationControl({ visualizePitch: true }));
         marker = new maplibre.Marker({ color: '#38bdf8' }).setLngLat([lon, lat]).addTo(map);
+        markerRef.current = marker;
       } catch (error) {
         console.warn('maplibre-init', error);
         mapRef.current = null;
@@ -52,6 +54,7 @@ export const MapBlock: React.FC<MapBlockProps> = ({ lat, lon, accuracy }) => {
     return () => {
       cancelled = true;
       marker?.remove();
+      markerRef.current = null;
       if (map) {
         clearAccuracy(map);
         map.remove();
@@ -64,6 +67,9 @@ export const MapBlock: React.FC<MapBlockProps> = ({ lat, lon, accuracy }) => {
   useEffect(() => {
     if (mapRef.current) {
       mapRef.current.setCenter([lon, lat]);
+    }
+    if (markerRef.current) {
+      markerRef.current.setLngLat([lon, lat]);
     }
   }, [lat, lon]);
 
@@ -78,7 +84,7 @@ export const MapBlock: React.FC<MapBlockProps> = ({ lat, lon, accuracy }) => {
     }
   }, [lat, lon, accuracy]);
 
-  return <div ref={containerRef} className="map-container" />;
+  return <div ref={containerRef} className="map-container" role="application" aria-label="Map" />;
 };
 
 const ACCURACY_SOURCE = 'accuracy-circle';

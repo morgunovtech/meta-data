@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { HistoricalWeatherResult, PoiResult, ReverseGeocodeResult } from '../types/api';
 import type { MovementInsight } from '../utils/insights';
 import { useI18n, useT } from '../i18n';
@@ -9,20 +9,20 @@ import { googleMapsLink, streetViewLink } from '../utils/mapLinks';
 interface DataInsightsCompactProps {
   reverseData: ReverseGeocodeResult | null;
   reverseLoading: boolean;
-  reverseError: boolean;
+  reverseError: string | boolean | null;
   coords: { lat: number; lon: number } | null;
   accuracyMeters: number | null;
   shotDate: string | Date | undefined;
   movement: MovementInsight | null;
   weather: HistoricalWeatherResult | null;
   weatherLoading: boolean;
-  weatherError: boolean;
+  weatherError: string | boolean | null;
   poiItems: PoiResult[];
   poiLoading: boolean;
-  poiError: boolean;
+  poiError: string | boolean | null;
   surveillanceItems: PoiResult[];
   surveillanceLoading: boolean;
-  surveillanceError: boolean;
+  surveillanceError: string | boolean | null;
   gpsHeading?: number;
 }
 
@@ -48,6 +48,11 @@ export const DataInsightsCompact: React.FC<DataInsightsCompactProps> = ({
   const t = useT();
   const { lang } = useI18n();
   const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    return () => { clearTimeout(copyTimerRef.current); };
+  }, []);
 
   const placeInfo = useMemo(() => localizePlaceParts(reverseData, lang), [reverseData, lang]);
   const dateLabel = useMemo(() => formatDateTime(shotDate, lang), [shotDate, lang]);
@@ -79,7 +84,8 @@ export const DataInsightsCompact: React.FC<DataInsightsCompactProps> = ({
       document.body.removeChild(textarea);
     } finally {
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
+      clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 1500);
     }
   };
 

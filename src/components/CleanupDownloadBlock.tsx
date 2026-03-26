@@ -296,9 +296,16 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
   }, [finalizeMask]);
 
   useEffect(() => {
-    const handleResize = () => setOverlayRedrawKey((value) => value + 1);
+    let timer: ReturnType<typeof setTimeout>;
+    const handleResize = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => setOverlayRedrawKey((value) => value + 1), 150);
+    };
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', handleResize);
+    };
   }, []);
 
   useEffect(() => {
@@ -505,7 +512,8 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
                 onPointerUp={handlePointerUp}
                 onPointerCancel={handlePointerLeave}
                 onPointerLeave={handlePointerLeave}
-                role="presentation"
+                role={manualMaskMode ? 'img' : 'presentation'}
+                aria-label={manualMaskMode ? t('manualMaskDrawingHint') : undefined}
                 style={{ pointerEvents: manualMaskMode ? 'auto' : 'none' }}
               >
                 <canvas ref={overlayCanvasRef} className="cleanup-preview__overlay-canvas" />

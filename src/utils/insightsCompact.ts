@@ -88,10 +88,15 @@ export function dedupeByNameAndDistance(items: PoiResult[]): PoiResult[] {
 
 export function formatWeatherLine(weather: HistoricalWeatherResult | null | undefined, locale: string): string | null {
   if (!weather) return null;
+  if (weather.temperature == null) return null;
   const number = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
-  return `${number.format(Math.round(weather.temperature))}°C · ${number.format(
-    Math.round(weather.cloudCover)
-  )}% · ${number.format(Math.round(weather.windSpeed))} км/ч · ${number.format(Math.round(weather.pressure))} гПа`;
+  const windUnit = locale === 'en' ? 'km/h' : locale === 'uz' ? 'km/s' : 'км/ч';
+  const pressureUnit = locale === 'en' ? 'hPa' : locale === 'uz' ? 'gPa' : 'гПа';
+  const parts: string[] = [`${number.format(Math.round(weather.temperature))}°C`];
+  if (weather.cloudCover != null) parts.push(`${number.format(Math.round(weather.cloudCover))}%`);
+  if (weather.windSpeed != null) parts.push(`${number.format(Math.round(weather.windSpeed))} ${windUnit}`);
+  if (weather.pressure != null) parts.push(`${number.format(Math.round(weather.pressure))} ${pressureUnit}`);
+  return parts.join(' · ');
 }
 
 const CATEGORY_KEYS: Record<string, string> = {

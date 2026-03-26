@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { BasicFileInfo } from '../types/metadata';
 import type { BoundingBox } from '../types/detection';
 import { useT } from '../i18n';
@@ -18,38 +18,42 @@ export const PreviewViewer: React.FC<PreviewViewerProps> = ({
 }) => {
   const t = useT();
   const [fullScreen, setFullScreen] = useState(false);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  const openFullscreen = useCallback(() => setFullScreen(true), []);
+  const closeFullscreen = useCallback(() => {
+    setFullScreen(false);
+    triggerRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!fullScreen) return;
+    closeRef.current?.focus();
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeFullscreen();
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        closeRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [fullScreen, closeFullscreen]);
 
   const overlays = useMemo(() => {
     return detections
       .filter((det) => det.score >= 0.5)
       .map((det, index) => {
         const style: React.CSSProperties = {
-          position: 'absolute',
           left: `${(det.x / fileInfo.width) * 100}%`,
           top: `${(det.y / fileInfo.height) * 100}%`,
           width: `${(det.width / fileInfo.width) * 100}%`,
-          height: `${(det.height / fileInfo.height) * 100}%`,
-          border: '2px solid rgba(56,189,248,0.8)',
-          borderRadius: '8px',
-          boxShadow: '0 0 12px rgba(56,189,248,0.6)',
-          pointerEvents: 'none'
+          height: `${(det.height / fileInfo.height) * 100}%`
         };
         return (
-          <div key={`${det.label}-${index}`} style={style} aria-hidden="true">
-            <span
-              style={{
-                position: 'absolute',
-                top: '-1.5rem',
-                left: 0,
-                padding: '0.2rem 0.4rem',
-                background: 'rgba(15,23,42,0.9)',
-                color: '#e2e8f0',
-                fontSize: '0.7rem',
-                borderRadius: '6px'
-              }}
-            >
-              {det.label}
-            </span>
+          <div key={`${det.label}-${index}`} className="detection-box" style={style} aria-hidden="true">
+            <span className="detection-label">{det.label}</span>
           </div>
         );
       });
@@ -58,11 +62,14 @@ export const PreviewViewer: React.FC<PreviewViewerProps> = ({
   return (
     <div className="preview-panel">
       <div
+        ref={triggerRef}
         className="preview-wrapper"
-        role="img"
-        aria-label={fileInfo.file.name}
-        onClick={() => setFullScreen(true)}
-        style={{ aspectRatio: `${fileInfo.width} / ${fileInfo.height}` }}
+        role="button"
+        tabIndex={0}
+        aria-label={`${fileInfo.file.name} — ${t('fullscreenClose')}`}
+        onClick={openFullscreen}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openFullscreen(); } }}
+        style={{ aspectRatio: `${fileInfo.width} / ${fileInfo.height}`, cursor: 'zoom-in' }}
       >
         <img src={fileInfo.thumbnailUrl} alt={fileInfo.file.name} className="preview-image" />
         <div style={{ position: 'absolute', inset: 0 }}>{overlays}</div>
@@ -77,9 +84,9 @@ export const PreviewViewer: React.FC<PreviewViewerProps> = ({
         </div>
       ) : null}
       {fullScreen ? (
-        <div className="fullscreen-viewer" onClick={() => setFullScreen(false)}>
-          <div className="fullscreen-inner">
-            <button type="button" className="fullscreen-close" onClick={() => setFullScreen(false)}>
+        <div className="fullscreen-viewer" role="dialog" aria-modal="true" aria-label={fileInfo.file.name} onClick={closeFullscreen}>
+          <div className="fullscreen-inner" onClick={(e) => e.stopPropagation()}>
+            <button ref={closeRef} type="button" className="fullscreen-close" onClick={closeFullscreen} aria-label={t('fullscreenClose')}>
               {t('fullscreenClose')}
             </button>
             <div className="fullscreen-media">

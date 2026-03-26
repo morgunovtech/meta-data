@@ -310,6 +310,7 @@ const App: React.FC = () => {
     setPreviewLoading(true);
     const longestSide = Math.max(fileInfo.width, fileInfo.height) || 1;
     const previewScale = Math.min(1, PREVIEW_MAX_DIMENSION / longestSide);
+    const debounceTimer = setTimeout(() => {
     createProcessedCanvas({ maxDimension: PREVIEW_MAX_DIMENSION })
       .then((canvas) => {
         if (!canvas || cancelled) {
@@ -340,9 +341,11 @@ const App: React.FC = () => {
           setPreviewLoading(false);
         }
       });
+    }, 300);
 
     return () => {
       cancelled = true;
+      clearTimeout(debounceTimer);
     };
   }, [
     fileInfo,

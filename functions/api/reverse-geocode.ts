@@ -1,24 +1,9 @@
 import type { PagesEventContext, CfRequestInit } from './_types';
-
-interface ReverseGeocodeResponse {
-  ok: boolean;
-  data?: {
-    address: string;
-    country: string;
-    countryCode?: string;
-    city?: string;
-    state?: string;
-    district?: string;
-    road?: string;
-    houseNumber?: string;
-    precisionMeters?: number;
-    lat: number;
-    lon: number;
-  };
-  error?: string;
-}
+import { json, methodNotAllowed } from './_geo';
 
 export async function onRequest({ request }: PagesEventContext): Promise<Response> {
+  if (request.method !== 'GET') return methodNotAllowed();
+
   const url = new URL(request.url);
   const lat = Number(url.searchParams.get('lat'));
   const lon = Number(url.searchParams.get('lon'));
@@ -30,7 +15,7 @@ export async function onRequest({ request }: PagesEventContext): Promise<Respons
     const apiUrl = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`;
     const init: CfRequestInit = {
       headers: {
-        'User-Agent': 'meta-data-insight/1.0 (https://github.com/)'
+        'User-Agent': 'meta-data-insight/1.0 (https://github.com/nicenemo/meta-data)'
       },
       cf: {
         cacheTtl: 900,
@@ -43,7 +28,7 @@ export async function onRequest({ request }: PagesEventContext): Promise<Respons
       return json({ ok: false, error: `upstream-${response.status}` });
     }
 
-    const result = await response.json<any>();
+    const result = await (await response.json()) as any;
     const boundingBox = (result.boundingbox ?? []).map((value: string) => Number(value));
     const precision = estimatePrecision(boundingBox);
     const data = {
@@ -73,11 +58,5 @@ function estimatePrecision(boundingBox: number[]): number | undefined {
   const lonDelta = Math.abs(lonMax - lonMin);
   const maxDelta = Math.max(latDelta, lonDelta);
   if (!Number.isFinite(maxDelta)) return undefined;
-  return maxDelta * 111_139; // approx meters per degree
-}
-
-function json(payload: ReverseGeocodeResponse): Response {
-  return new Response(JSON.stringify(payload), {
-    headers: { 'Content-Type': 'application/json' }
-  });
+  return maxDelta * 111_139;
 }

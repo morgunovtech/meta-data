@@ -1,18 +1,9 @@
 import type { PagesEventContext, CfRequestInit } from './_types';
-
-interface WeatherResponse {
-  ok: boolean;
-  data?: {
-    temperature: number;
-    precipitation: number;
-    cloudCover: number;
-    windSpeed: number;
-    pressure: number;
-  };
-  error?: string;
-}
+import { json, methodNotAllowed } from './_geo';
 
 export async function onRequest({ request }: PagesEventContext): Promise<Response> {
+  if (request.method !== 'GET') return methodNotAllowed();
+
   const url = new URL(request.url);
   const lat = Number(url.searchParams.get('lat'));
   const lon = Number(url.searchParams.get('lon'));
@@ -41,7 +32,7 @@ export async function onRequest({ request }: PagesEventContext): Promise<Respons
     if (!response.ok) {
       return json({ ok: false, error: `upstream-${response.status}` });
     }
-    const payload = await response.json<any>();
+    const payload = await (await response.json()) as any;
     const times: string[] = payload.hourly?.time ?? [];
     const index = times.findIndex((time) => time.endsWith(`T${hour.toString().padStart(2, '0')}:00`));
     if (index === -1) {
@@ -56,20 +47,14 @@ export async function onRequest({ request }: PagesEventContext): Promise<Respons
     return json({
       ok: true,
       data: {
-        temperature: Number(temperature ?? 0),
-        precipitation: Number(precipitation ?? 0),
-        cloudCover: Number(cloudcover ?? 0),
-        windSpeed: Number(wind ?? 0),
-        pressure: Number(pressure ?? 0)
+        temperature: temperature != null ? Number(temperature) : null,
+        precipitation: precipitation != null ? Number(precipitation) : null,
+        cloudCover: cloudcover != null ? Number(cloudcover) : null,
+        windSpeed: wind != null ? Number(wind) : null,
+        pressure: pressure != null ? Number(pressure) : null
       }
     });
   } catch (error) {
     return json({ ok: false, error: (error as Error).message ?? 'unexpected-error' });
   }
-}
-
-function json(payload: WeatherResponse): Response {
-  return new Response(JSON.stringify(payload), {
-    headers: { 'Content-Type': 'application/json' }
-  });
 }

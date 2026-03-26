@@ -35,7 +35,16 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ loading, onFile, error }
     (event: React.DragEvent<HTMLDivElement>) => {
       event.preventDefault();
       setDragOver(false);
-      handleFiles(event.dataTransfer.files);
+      const files = event.dataTransfer.files;
+      if (files.length > 0) {
+        const file = files[0];
+        const mime = file.type.toLowerCase();
+        const name = file.name.toLowerCase();
+        const isImage = mime.startsWith('image/') || /\.(jpe?g|png|webp|avif|gif|bmp|heic|heif)$/i.test(name);
+        if (isImage) {
+          handleFiles(files);
+        }
+      }
     },
     [handleFiles]
   );
@@ -64,14 +73,13 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ loading, onFile, error }
           accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/bmp,image/heic,image/heif,.heic,.heif"
           className="sr-only"
           aria-label={t('uploadButton')}
-          onChange={(event) => handleFiles(event.target.files)}
+          onChange={(event) => { handleFiles(event.target.files); if (event.target) event.target.value = ''; }}
         />
         <label
           className="drop-zone__label"
           htmlFor={uploadInputId}
           role="button"
           tabIndex={0}
-          onClick={openPicker}
           onKeyDown={(event) => {
             if (event.key === 'Enter' || event.key === ' ') {
               event.preventDefault();

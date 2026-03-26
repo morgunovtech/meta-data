@@ -18,7 +18,7 @@ export function computeMetadataCompleteness(meta: Partial<StructuredMetadata>): 
       filled += 1;
     }
   });
-  if (meta.gps?.lat && meta.gps?.lon) {
+  if (meta.gps?.lat != null && meta.gps?.lon != null) {
     filled += 1;
   }
   return filled / (REQUIRED_FIELDS.length + 1);

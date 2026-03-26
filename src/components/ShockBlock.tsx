@@ -117,26 +117,41 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
         <div className="manual-coords">
           <p>{t('mapMissing')}</p>
           <div className="controls-row">
-            <input
-              type="number"
-              value={latInput}
-              placeholder={t('manualLat')}
-              onChange={(event) => setLatInput(event.target.value)}
-            />
-            <input
-              type="number"
-              value={lonInput}
-              placeholder={t('manualLon')}
-              onChange={(event) => setLonInput(event.target.value)}
-            />
+            <label>
+              <span className="sr-only">{t('manualLat')}</span>
+              <input
+                type="number"
+                value={latInput}
+                placeholder={t('manualLat')}
+                aria-label={t('manualLat')}
+                min={-90}
+                max={90}
+                step="any"
+                onChange={(event) => setLatInput(event.target.value)}
+              />
+            </label>
+            <label>
+              <span className="sr-only">{t('manualLon')}</span>
+              <input
+                type="number"
+                value={lonInput}
+                placeholder={t('manualLon')}
+                aria-label={t('manualLon')}
+                min={-180}
+                max={180}
+                step="any"
+                onChange={(event) => setLonInput(event.target.value)}
+              />
+            </label>
             <button
               type="button"
               onClick={() => {
+                if (!latInput.trim() || !lonInput.trim()) return;
                 const lat = Number(latInput);
                 const lon = Number(lonInput);
-                if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
-                  onManualCoordsChange({ lat, lon });
-                }
+                if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+                if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return;
+                onManualCoordsChange({ lat, lon });
               }}
             >
               {t('applyManual')}

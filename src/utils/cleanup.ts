@@ -73,46 +73,35 @@ export function blurManualMasks(
 ) {
   if (masks.length === 0) return;
 
+  const { width, height } = ctx.canvas;
+
+  // Reuse a single blurred layer for all masks
+  const blurredFull = document.createElement('canvas');
+  blurredFull.width = width;
+  blurredFull.height = height;
+  const bfCtx = blurredFull.getContext('2d');
+  if (!bfCtx) return;
+  bfCtx.filter = `blur(${Math.round(strength)}px)`;
+  bfCtx.drawImage(source, 0, 0, width, height);
+  bfCtx.filter = 'none';
+
   masks.forEach((mask) => {
-    if (mask.points.length < MIN_MASK_POINTS) {
-      return;
-    }
+    if (mask.points.length < MIN_MASK_POINTS) return;
 
-    const maskCanvas = document.createElement('canvas');
-    maskCanvas.width = ctx.canvas.width;
-    maskCanvas.height = ctx.canvas.height;
-    const maskCtx = maskCanvas.getContext('2d');
-    if (!maskCtx) return;
-
+    ctx.save();
     const radius = Math.max(mask.radius, MIN_MASK_SIZE / 2);
-    maskCtx.lineJoin = 'round';
-    maskCtx.lineCap = 'round';
-    maskCtx.beginPath();
-    maskCtx.moveTo(mask.points[0].x, mask.points[0].y);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(mask.points[0].x, mask.points[0].y);
     for (let i = 1; i < mask.points.length; i += 1) {
-      const pt = mask.points[i];
-      maskCtx.lineTo(pt.x, pt.y);
+      ctx.lineTo(mask.points[i].x, mask.points[i].y);
     }
-    maskCtx.closePath();
-    maskCtx.fillStyle = 'white';
-    maskCtx.strokeStyle = 'white';
-    maskCtx.lineWidth = radius * 1.2;
-    maskCtx.fill();
-    maskCtx.stroke();
-
-    const blurLayer = document.createElement('canvas');
-    blurLayer.width = ctx.canvas.width;
-    blurLayer.height = ctx.canvas.height;
-    const blurCtx = blurLayer.getContext('2d');
-    if (!blurCtx) return;
-
-    blurCtx.filter = `blur(${Math.round(strength)}px)`;
-    blurCtx.drawImage(source, 0, 0, ctx.canvas.width, ctx.canvas.height);
-    blurCtx.filter = 'none';
-    blurCtx.globalCompositeOperation = 'destination-in';
-    blurCtx.drawImage(maskCanvas, 0, 0);
-
-    ctx.drawImage(blurLayer, 0, 0);
+    ctx.closePath();
+    ctx.lineWidth = radius * 1.2;
+    ctx.clip();
+    ctx.drawImage(blurredFull, 0, 0);
+    ctx.restore();
   });
 }
 

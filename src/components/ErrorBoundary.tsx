@@ -9,6 +9,18 @@ interface ErrorBoundaryState {
   details?: string;
 }
 
+const FALLBACK_LABELS: Record<string, { title: string; reload: string }> = {
+  ru: { title: 'Что-то пошло не так', reload: 'Перезагрузить' },
+  en: { title: 'Something went wrong', reload: 'Reload' },
+  uz: { title: 'Xatolik yuz berdi', reload: 'Qayta yuklash' }
+};
+
+function getLabels(): { title: string; reload: string } {
+  if (typeof document === 'undefined') return FALLBACK_LABELS.en;
+  const lang = document.documentElement.lang || 'ru';
+  return FALLBACK_LABELS[lang] ?? FALLBACK_LABELS.en;
+}
+
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
@@ -24,6 +36,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   handleReset = () => {
+    this.setState({ hasError: false });
+  };
+
+  handleReload = () => {
     if (typeof window !== 'undefined') {
       window.location.reload();
     }
@@ -31,12 +47,12 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   render() {
     if (this.state.hasError) {
+      const labels = getLabels();
       return (
         <div className="error-boundary">
-          <h1>Something went wrong</h1>
-          <p>{this.state.details ?? 'Unexpected error.'}</p>
+          <h1>{labels.title}</h1>
           <button type="button" onClick={this.handleReset}>
-            Reload
+            {labels.reload}
           </button>
         </div>
       );
@@ -44,4 +60,3 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     return this.props.children;
   }
 }
-

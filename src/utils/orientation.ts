@@ -16,7 +16,7 @@ export function inferOrientation(
   } else {
     normalizedTag = orientationTag;
   }
-  if (normalizedTag === 6 || normalizedTag === 8) {
+  if (normalizedTag === 5 || normalizedTag === 6 || normalizedTag === 7 || normalizedTag === 8) {
     [width, height] = [height, width];
   }
   if (width === height) return 'square';
