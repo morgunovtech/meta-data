@@ -1,0 +1,351 @@
+import type { StructuredMetadata } from '../../types/metadata';
+import type { BoundingBox } from '../../types/detection';
+import type { OCRResult } from '../../hooks/useOCR';
+import type { FilenameAnalysis } from './filenameAnalyzer';
+import type { ResolutionAnalysis } from './resolutionAnalyzer';
+import type { StrippedAnalysis } from './strippedDetector';
+import type { EditingAnalysis } from './editingHistory';
+import type { HashResult } from './hashAnalyzer';
+import type { TemporalInsight, Severity } from './temporalAnalyzer';
+
+type Lang = 'ru' | 'en' | 'uz';
+
+/* ── types ──────────────────────────────────────────────── */
+
+export interface ProfileSection {
+  icon: string;
+  title: string;
+  text: string;
+  subtext: string | null;
+  leakPoints: number;
+  severity: Severity;
+  threatScenario: string | null;
+}
+
+export interface LeakLevel {
+  level: 'low' | 'medium' | 'high' | 'critical';
+  color: string;
+  label: string;
+  description: string;
+}
+
+export interface DigitalProfile {
+  sections: ProfileSection[];
+  leakScore: number;
+  leakLevel: LeakLevel;
+  serialNumbers: string[];
+}
+
+/* ── leak level ─────────────────────────────────────────── */
+
+const LEVELS: Record<Lang, Record<string, LeakLevel>> = {
+  ru: {
+    critical: { level: 'critical', color: '#DC2626', label: 'Критическая утечка', description: 'Фото раскрывает адрес, устройство, привычки. Не публикуйте без очистки.' },
+    high: { level: 'high', color: '#F59E0B', label: 'Высокий риск', description: 'Достаточно данных для частичной идентификации.' },
+    medium: { level: 'medium', color: '#3B82F6', label: 'Умеренный риск', description: 'Некоторые данные доступны, но недостаточны для полной идентификации.' },
+    low: { level: 'low', color: '#10B981', label: 'Низкий риск', description: 'Метаданные минимальны. Фото относительно анонимно.' },
+  },
+  en: {
+    critical: { level: 'critical', color: '#DC2626', label: 'Critical leak', description: 'Photo reveals your address, device, and habits. Do not publish without cleanup.' },
+    high: { level: 'high', color: '#F59E0B', label: 'High risk', description: 'Enough data for partial identification.' },
+    medium: { level: 'medium', color: '#3B82F6', label: 'Moderate risk', description: 'Some data available, but insufficient for full identification.' },
+    low: { level: 'low', color: '#10B981', label: 'Low risk', description: 'Minimal metadata. Photo is relatively anonymous.' },
+  },
+  uz: {
+    critical: { level: 'critical', color: '#DC2626', label: 'Kritik oqish', description: 'Foto manzil, qurilma va odatlarni oshkor qiladi. Tozalashsiz nashr etmang.' },
+    high: { level: 'high', color: '#F59E0B', label: 'Yuqori xavf', description: 'Qisman identifikatsiya uchun yetarli ma\'lumot.' },
+    medium: { level: 'medium', color: '#3B82F6', label: 'O\'rtacha xavf', description: 'Ba\'zi ma\'lumotlar mavjud, lekin to\'liq identifikatsiya uchun yetarli emas.' },
+    low: { level: 'low', color: '#10B981', label: 'Past xavf', description: 'Minimal metadata. Foto nisbatan anonim.' },
+  },
+};
+
+function getLeakLevel(score: number, lang: Lang): LeakLevel {
+  const l = LEVELS[lang];
+  if (score >= 80) return l.critical;
+  if (score >= 50) return l.high;
+  if (score >= 25) return l.medium;
+  return l.low;
+}
+
+/* ── threat scenarios ───────────────────────────────────── */
+
+interface ThreatMap { [key: string]: Record<Lang, string> }
+
+const THREATS: ThreatMap = {
+  gps: {
+    ru: 'Злоумышленник может определить домашний адрес, место работы или маршрут',
+    en: 'An attacker can determine your home address, workplace, or route',
+    uz: 'Tajovuzkor uy manzili, ish joyi yoki marshrutni aniqlay oladi',
+  },
+  datetime: {
+    ru: 'Позволяет установить распорядок дня и привычки',
+    en: 'Reveals daily schedule and habits',
+    uz: 'Kundalik tartib va odatlarni oshkor qiladi',
+  },
+  camera: {
+    ru: 'Определяет уровень дохода и технические предпочтения',
+    en: 'Reveals income level and technical preferences',
+    uz: 'Daromad darajasi va texnik afzalliklarni oshkor qiladi',
+  },
+  faces: {
+    ru: 'Биометрическая идентификация через сервисы поиска по лицу',
+    en: 'Biometric identification via face search services',
+    uz: 'Yuz qidiruv xizmatlari orqali biometrik identifikatsiya',
+  },
+  text: {
+    ru: 'Текст на фото (вывески, номера) раскрывает местоположение или контекст',
+    en: 'Text in photo (signs, plates) reveals location or context',
+    uz: 'Fotodagi matn (belgilar, raqamlar) joylashuv yoki kontekstni oshkor qiladi',
+  },
+  serial: {
+    ru: 'Серийный номер связывает все фото с одного устройства',
+    en: 'Serial number links all photos from one device',
+    uz: 'Seriya raqami bitta qurilmadan barcha fotolarni bog\'laydi',
+  },
+  hash: {
+    ru: 'Хеш позволяет найти это фото на любом сервисе, куда оно загружалось',
+    en: 'Hash allows finding this photo on any service it was uploaded to',
+    uz: 'Xesh bu fotoni yuklangan har qanday xizmatda topishga imkon beradi',
+  },
+  ai: {
+    ru: 'Фото сгенерировано нейросетью — не является реальной фотографией',
+    en: 'Photo is AI-generated — not a real photograph',
+    uz: 'Foto neyrotarmoq tomonidan yaratilgan — haqiqiy fotosurat emas',
+  },
+};
+
+/* ── serial number extraction ───────────────────────────── */
+
+const SERIAL_KEYS = [
+  'SerialNumber', 'serialNumber',
+  'LensSerialNumber', 'lensSerialNumber',
+  'InternalSerialNumber', 'internalSerialNumber',
+  'BodySerialNumber', 'bodySerialNumber',
+  'CameraSerialNumber', 'cameraSerialNumber',
+  'ImageUniqueID', 'imageUniqueID',
+];
+
+function extractSerialNumbers(exif: Record<string, unknown>): string[] {
+  const serials: string[] = [];
+  for (const key of SERIAL_KEYS) {
+    const value = exif[key];
+    if (value != null && String(value).length > 1) {
+      serials.push(`${key}: ${String(value)}`);
+    }
+  }
+  return serials;
+}
+
+/* ── main generator ─────────────────────────────────────── */
+
+export interface ProfileInput {
+  filename: FilenameAnalysis;
+  resolution: ResolutionAnalysis;
+  stripped: StrippedAnalysis;
+  editing: EditingAnalysis;
+  hash: HashResult | null;
+  temporal: TemporalInsight[];
+  metadata: StructuredMetadata | null;
+  detections: BoundingBox[];
+  ocrResult: OCRResult | null;
+  originalFilename: string;
+  lang: Lang;
+}
+
+export function generateDigitalProfile(input: ProfileInput): DigitalProfile {
+  const { filename, resolution, stripped, editing, hash, temporal, metadata, detections, ocrResult, lang } = input;
+  const sections: ProfileSection[] = [];
+  const exif = metadata?.groups?.exif ?? {};
+
+  // ── Device ──
+  const device = metadata?.cameraModel ?? filename.device ?? resolution.possibleDevices[0] ?? null;
+  if (device) {
+    const fromExif = !!metadata?.cameraModel;
+    sections.push({
+      icon: '📱',
+      title: lang === 'ru' ? 'Устройство' : lang === 'uz' ? 'Qurilma' : 'Device',
+      text: device + (metadata?.cameraMake ? ` (${metadata.cameraMake})` : ''),
+      subtext: fromExif
+        ? (lang === 'ru' ? 'Определено из метаданных камеры' : lang === 'uz' ? 'Kamera metadatalaridan aniqlangan' : 'Identified from camera metadata')
+        : (lang === 'ru' ? 'Определено по косвенным признакам' : lang === 'uz' ? 'Bilvosita belgilar bo\'yicha aniqlangan' : 'Identified by indirect signs'),
+      leakPoints: fromExif ? 15 : 8,
+      severity: fromExif ? 'high' : 'medium',
+      threatScenario: THREATS.camera[lang],
+    });
+  }
+
+  // ── GPS ──
+  if (metadata?.gps) {
+    sections.push({
+      icon: '📍',
+      title: lang === 'ru' ? 'Местоположение' : lang === 'uz' ? 'Joylashuv' : 'Location',
+      text: `${metadata.gps.lat.toFixed(5)}, ${metadata.gps.lon.toFixed(5)}` + (metadata.gps.altitude != null ? ` (${Math.round(metadata.gps.altitude)}m)` : ''),
+      subtext: metadata.gps.accuracy != null
+        ? (lang === 'ru' ? `Точность: ±${Math.round(metadata.gps.accuracy)}м` : `Accuracy: ±${Math.round(metadata.gps.accuracy)}m`)
+        : null,
+      leakPoints: 25,
+      severity: 'high',
+      threatScenario: THREATS.gps[lang],
+    });
+  }
+
+  // ── Temporal ──
+  if (temporal.length > 0) {
+    const main = temporal[0];
+    sections.push({
+      icon: '🕐',
+      title: lang === 'ru' ? 'Время и привычки' : lang === 'uz' ? 'Vaqt va odatlar' : 'Time & habits',
+      text: main.fact,
+      subtext: main.inference || null,
+      leakPoints: main.severity === 'high' ? 15 : 8,
+      severity: main.severity,
+      threatScenario: THREATS.datetime[lang],
+    });
+  }
+
+  // ── Faces ──
+  const personDetections = detections.filter(d => d.label === 'person' && d.score >= 0.5);
+  if (personDetections.length > 0) {
+    sections.push({
+      icon: '👤',
+      title: lang === 'ru' ? 'Люди на фото' : lang === 'uz' ? 'Fotodagi odamlar' : 'People in photo',
+      text: lang === 'ru'
+        ? `Обнаружено ${personDetections.length} чел.`
+        : `${personDetections.length} person(s) detected`,
+      subtext: lang === 'ru'
+        ? 'Лица могут быть найдены через сервисы поиска по изображениям'
+        : 'Faces can be found via image search services',
+      leakPoints: 20,
+      severity: 'high',
+      threatScenario: THREATS.faces[lang],
+    });
+  }
+
+  // ── OCR text ──
+  if (ocrResult && ocrResult.fullText.length > 3) {
+    sections.push({
+      icon: '🔤',
+      title: lang === 'ru' ? 'Текст на фото' : lang === 'uz' ? 'Fotodagi matn' : 'Text in photo',
+      text: lang === 'ru'
+        ? `${ocrResult.regions.length} фрагментов текста`
+        : `${ocrResult.regions.length} text fragments`,
+      subtext: null,
+      leakPoints: 10,
+      severity: 'medium',
+      threatScenario: THREATS.text[lang],
+    });
+  }
+
+  // ── Editing / AI ──
+  if (editing.isAiGenerated) {
+    sections.push({
+      icon: '🤖',
+      title: lang === 'ru' ? 'AI-генерация' : lang === 'uz' ? 'AI-generatsiya' : 'AI-generated',
+      text: editing.aiTool ?? 'AI',
+      subtext: lang === 'ru' ? 'Фото создано нейросетью' : 'Photo created by AI',
+      leakPoints: 0,
+      severity: 'low',
+      threatScenario: THREATS.ai[lang],
+    });
+  } else if (editing.edited) {
+    sections.push({
+      icon: '🖌️',
+      title: lang === 'ru' ? 'Обработка' : lang === 'uz' ? 'Tahrirlash' : 'Editing',
+      text: editing.software.join(', '),
+      subtext: editing.hints[0] ?? null,
+      leakPoints: 5,
+      severity: 'low',
+      threatScenario: null,
+    });
+  }
+
+  // ── Stripped metadata ──
+  if (stripped.stripped) {
+    sections.push({
+      icon: '💬',
+      title: lang === 'ru' ? 'Происхождение' : lang === 'uz' ? 'Kelib chiqishi' : 'Origin',
+      text: stripped.strippedBy
+        ? (lang === 'ru' ? `Прошло через ${stripped.strippedBy}` : `Passed through ${stripped.strippedBy}`)
+        : (lang === 'ru' ? 'Метаданные были удалены' : 'Metadata was stripped'),
+      subtext: stripped.evidence[0] ?? null,
+      leakPoints: 5,
+      severity: 'low',
+      threatScenario: null,
+    });
+  }
+
+  // ── Content type ──
+  if (resolution.contentHint) {
+    sections.push({
+      icon: resolution.isScreenshot ? '🖥️' : '📐',
+      title: lang === 'ru' ? 'Тип контента' : lang === 'uz' ? 'Kontent turi' : 'Content type',
+      text: resolution.contentHint,
+      subtext: null,
+      leakPoints: 0,
+      severity: 'low',
+      threatScenario: null,
+    });
+  }
+
+  // ── Serial numbers ──
+  const serials = extractSerialNumbers(exif);
+  if (serials.length > 0) {
+    sections.push({
+      icon: '🔢',
+      title: lang === 'ru' ? 'Серийные номера' : lang === 'uz' ? 'Seriya raqamlari' : 'Serial numbers',
+      text: serials.join('; '),
+      subtext: null,
+      leakPoints: 10,
+      severity: 'medium',
+      threatScenario: THREATS.serial[lang],
+    });
+  }
+
+  // ── Hash ──
+  if (hash) {
+    sections.push({
+      icon: '🔑',
+      title: lang === 'ru' ? 'Цифровой отпечаток' : lang === 'uz' ? 'Raqamli barmoq izi' : 'Digital fingerprint',
+      text: `SHA-256: ${hash.sha256.substring(0, 16)}...`,
+      subtext: lang === 'ru'
+        ? 'Уникальный идентификатор файла — по нему можно найти фото на любом сервисе'
+        : 'Unique file identifier — can be used to find this photo on any service',
+      leakPoints: 5,
+      severity: 'low',
+      threatScenario: THREATS.hash[lang],
+    });
+  }
+
+  const leakScore = Math.min(100, sections.reduce((s, sec) => s + sec.leakPoints, 0));
+
+  return {
+    sections,
+    leakScore,
+    leakLevel: getLeakLevel(leakScore, lang),
+    serialNumbers: serials,
+  };
+}
+
+/* ── report export ──────────────────────────────────────── */
+
+export function generateReport(profile: DigitalProfile, lang: Lang): string {
+  const header = lang === 'ru' ? '=== ОТЧЁТ Found You ===' : '=== Found You Report ===';
+  const dateLabel = lang === 'ru' ? 'Дата анализа' : 'Analysis date';
+  const leakLabel = lang === 'ru' ? 'Уровень утечки' : 'Leak level';
+
+  let report = `${header}\n`;
+  report += `${dateLabel}: ${new Date().toISOString()}\n`;
+  report += `${leakLabel}: ${profile.leakScore}/100 (${profile.leakLevel.label})\n`;
+  report += `${profile.leakLevel.description}\n\n`;
+
+  for (const section of profile.sections) {
+    report += `${section.icon} ${section.title}\n`;
+    report += `  ${section.text}\n`;
+    if (section.subtext) report += `  → ${section.subtext}\n`;
+    if (section.threatScenario) report += `  ⚠ ${section.threatScenario}\n`;
+    report += '\n';
+  }
+
+  report += `\n=== https://foundyou.morgunov.tech ===\n`;
+  return report;
+}

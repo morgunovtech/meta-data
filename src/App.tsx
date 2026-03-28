@@ -15,7 +15,15 @@ import type { ManualCoordinates } from './types/metadata';
 import { useI18n, useT } from './i18n';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
 import type { AntiSearchParams, CleanupPreviewDimensions, ManualMask, QualityMode } from './types/cleanup';
+import { ProfileBlock } from './components/ProfileBlock';
 import { generateSceneNarrative } from './utils/sceneNarrative';
+import { analyzeFilename } from './utils/heuristics/filenameAnalyzer';
+import { analyzeResolution } from './utils/heuristics/resolutionAnalyzer';
+import { detectStrippedMetadata } from './utils/heuristics/strippedDetector';
+import { analyzeEditingHistory } from './utils/heuristics/editingHistory';
+import { generateFileHash } from './utils/heuristics/hashAnalyzer';
+import { analyzeDateTime } from './utils/heuristics/temporalAnalyzer';
+import { generateDigitalProfile, type DigitalProfile } from './utils/heuristics/digitalProfile';
 import {
   applyAntiSearch,
   applyColorReduction,
@@ -101,6 +109,55 @@ const App: React.FC = () => {
   const { loading: analysisLoading, error: analysisError, detectionStatus, detections, summary: analysisSummary } =
     useImageAnalysis(fileInfo);
   const { loading: ocrLoading, error: ocrError, result: ocrResult, progress: ocrProgress } = useOCR(fileInfo);
+
+  const [digitalProfile, setDigitalProfile] = useState<DigitalProfile | null>(null);
+
+  // Compute digital profile when analysis completes
+  useEffect(() => {
+    if (!fileInfo) { setDigitalProfile(null); return; }
+    // Wait until metadata and analysis are done
+    if (analysisLoading || ocrLoading) return;
+
+    let cancelled = false;
+    (async () => {
+      const originalName = fileInfo.originalName ?? fileInfo.file.name;
+      const filenameResult = analyzeFilename(originalName, lang);
+      const resolutionResult = analyzeResolution(fileInfo.width, fileInfo.height, lang);
+      const exif = metadata?.groups?.exif ?? {};
+      const xmp = metadata?.groups?.xmp ?? {};
+      const editingResult = analyzeEditingHistory(exif, xmp, lang);
+      const strippedResult = detectStrippedMetadata({
+        filename: originalName,
+        filenameAnalysis: filenameResult,
+        mimeType: fileInfo.mimeType,
+        width: fileInfo.width,
+        height: fileInfo.height,
+        hasExif: Object.keys(exif).length > 2,
+        hasSoftwareTag: !!(exif.Software ?? exif.software ?? xmp.CreatorTool ?? xmp.creatorTool),
+        lang,
+      });
+      const temporalResult = analyzeDateTime(metadata?.shotDate, lang);
+      const hashResult = await generateFileHash(fileInfo.originalFile ?? fileInfo.file);
+
+      if (cancelled) return;
+
+      const profile = generateDigitalProfile({
+        filename: filenameResult,
+        resolution: resolutionResult,
+        stripped: strippedResult,
+        editing: editingResult,
+        hash: hashResult,
+        temporal: temporalResult,
+        metadata: metadata ?? null,
+        detections,
+        ocrResult: ocrResult ?? null,
+        originalFilename: originalName,
+        lang,
+      });
+      setDigitalProfile(profile);
+    })();
+    return () => { cancelled = true; };
+  }, [fileInfo, metadata, detections, ocrResult, analysisLoading, ocrLoading, lang]);
 
   type NoticeState = { type: 'success' | 'error'; message: string };
 
@@ -422,6 +479,10 @@ const App: React.FC = () => {
           error={ocrError}
           progress={ocrProgress}
         />
+      ) : null}
+
+      {fileInfo && digitalProfile ? (
+        <ProfileBlock profile={digitalProfile} lang={lang} />
       ) : null}
 
       {fileInfo ? (
