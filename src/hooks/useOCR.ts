@@ -66,7 +66,8 @@ export function useOCR(fileInfo: BasicFileInfo | null) {
           return;
         }
 
-        const { data } = await worker.recognize(fileInfo.dataUrl);
+        // Use the original File object for best quality
+        const { data } = await worker.recognize(fileInfo.file);
 
         if (cancelled) {
           await worker.terminate();
@@ -75,31 +76,39 @@ export function useOCR(fileInfo: BasicFileInfo | null) {
 
         setProgress({ label: t('ocrStageDone'), value: 1 });
 
-        // Extract word-level bounding boxes with decent confidence
+        // Tesseract.js v7 structure: data.blocks[].paragraphs[].lines[].words[]
         const regions: OCRRegion[] = [];
-        for (const line of data.lines ?? []) {
-          for (const word of line.words ?? []) {
-            if (word.confidence < 40) continue;
-            if (word.text.trim().length < 2) continue;
-            const bbox = word.bbox;
-            regions.push({
-              text: word.text,
-              x: bbox.x0,
-              y: bbox.y0,
-              width: bbox.x1 - bbox.x0,
-              height: bbox.y1 - bbox.y0,
-              confidence: word.confidence,
-            });
+        const textLines: string[] = [];
+
+        for (const block of data.blocks ?? []) {
+          for (const paragraph of block.paragraphs ?? []) {
+            for (const line of paragraph.lines ?? []) {
+              if (line.confidence < 30) continue;
+              const lineText = line.text?.trim();
+              if (lineText && lineText.length > 0) {
+                textLines.push(lineText);
+              }
+              for (const word of line.words ?? []) {
+                if (word.confidence < 40) continue;
+                if (word.text.trim().length < 2) continue;
+                const bbox = word.bbox;
+                regions.push({
+                  text: word.text,
+                  x: bbox.x0,
+                  y: bbox.y0,
+                  width: bbox.x1 - bbox.x0,
+                  height: bbox.y1 - bbox.y0,
+                  confidence: word.confidence,
+                });
+              }
+            }
           }
         }
 
-        // Build line-level text (filter low confidence lines)
-        const lines = (data.lines ?? [])
-          .filter((line: any) => line.confidence > 30)
-          .map((line: any) => line.text.trim())
-          .filter((text: string) => text.length > 0);
-
-        const fullText = lines.join('\n');
+        // Fallback: use data.text if block traversal yielded nothing
+        const fullText = textLines.length > 0
+          ? textLines.join('\n')
+          : (data.text ?? '').trim();
 
         setResult({ fullText, regions });
 
