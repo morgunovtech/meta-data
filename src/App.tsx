@@ -24,6 +24,21 @@ import { analyzeEditingHistory } from './utils/heuristics/editingHistory';
 import { generateFileHash } from './utils/heuristics/hashAnalyzer';
 import { analyzeDateTime } from './utils/heuristics/temporalAnalyzer';
 import { generateDigitalProfile, type DigitalProfile } from './utils/heuristics/digitalProfile';
+import type { FilenameAnalysis } from './utils/heuristics/filenameAnalyzer';
+import type { ResolutionAnalysis } from './utils/heuristics/resolutionAnalyzer';
+import type { StrippedAnalysis } from './utils/heuristics/strippedDetector';
+import type { EditingAnalysis } from './utils/heuristics/editingHistory';
+import type { HashResult } from './utils/heuristics/hashAnalyzer';
+import type { TemporalInsight } from './utils/heuristics/temporalAnalyzer';
+
+export interface ProData {
+  filename: FilenameAnalysis;
+  resolution: ResolutionAnalysis;
+  stripped: StrippedAnalysis;
+  editing: EditingAnalysis;
+  hash: HashResult | null;
+  temporal: TemporalInsight[];
+}
 import {
   applyAntiSearch,
   applyColorReduction,
@@ -111,11 +126,11 @@ const App: React.FC = () => {
   const { loading: ocrLoading, error: ocrError, result: ocrResult, progress: ocrProgress } = useOCR(fileInfo);
 
   const [digitalProfile, setDigitalProfile] = useState<DigitalProfile | null>(null);
+  const [proData, setProData] = useState<ProData | null>(null);
 
   // Compute digital profile when analysis completes
   useEffect(() => {
-    if (!fileInfo) { setDigitalProfile(null); return; }
-    // Wait until metadata and analysis are done
+    if (!fileInfo) { setDigitalProfile(null); setProData(null); return; }
     if (analysisLoading || ocrLoading) return;
 
     let cancelled = false;
@@ -155,6 +170,7 @@ const App: React.FC = () => {
         lang,
       });
       setDigitalProfile(profile);
+      setProData({ filename: filenameResult, resolution: resolutionResult, stripped: strippedResult, editing: editingResult, hash: hashResult, temporal: temporalResult });
     })();
     return () => { cancelled = true; };
   }, [fileInfo, metadata, detections, ocrResult, analysisLoading, ocrLoading, lang]);
@@ -482,7 +498,15 @@ const App: React.FC = () => {
       ) : null}
 
       {fileInfo && digitalProfile ? (
-        <ProfileBlock profile={digitalProfile} lang={lang} metadata={metadata} />
+        <ProfileBlock
+          profile={digitalProfile}
+          lang={lang}
+          metadata={metadata}
+          proData={proData}
+          fileInfo={fileInfo}
+          detections={detections}
+          ocrResult={ocrResult}
+        />
       ) : null}
 
       {fileInfo ? (
