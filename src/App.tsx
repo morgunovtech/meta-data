@@ -72,9 +72,30 @@ function estimateDataUrlBytes(dataUrl: string): number {
   return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
 }
 
+const SEO_DESCRIPTIONS: Record<string, string> = {
+  ru: 'Бесплатный онлайн-инструмент для анализа и удаления метаданных из фотографий. EXIF, GPS, OCR, детекция лиц — всё локально в браузере.',
+  en: 'Free browser-based tool to analyze and remove photo metadata. EXIF, GPS, OCR, face detection — all processed locally, nothing uploaded.',
+  uz: 'Fotosuratlar metama\'lumotlarini tahlil qilish va olib tashlash uchun bepul vosita. EXIF, GPS, OCR — hammasi brauzerda ishlaydi.',
+};
+
+const SEO_TITLES: Record<string, string> = {
+  ru: 'Found You — Анализ метаданных фото',
+  en: 'Found You — Photo Metadata Analyzer',
+  uz: 'Found You — Foto metadata tahlili',
+};
+
 const App: React.FC = () => {
   const t = useT();
   const { lang } = useI18n();
+
+  // Update document title and meta description on language change
+  useEffect(() => {
+    document.title = SEO_TITLES[lang] ?? SEO_TITLES.ru;
+    const metaDesc = document.querySelector('meta[name="description"]');
+    if (metaDesc) {
+      metaDesc.setAttribute('content', SEO_DESCRIPTIONS[lang] ?? SEO_DESCRIPTIONS.ru);
+    }
+  }, [lang]);
   const { fileInfo, error, loading, processFile } = useImageFile();
   const { metadata } = useExifMetadata(fileInfo);
   const { loading: analysisLoading, error: analysisError, detectionStatus, detections, summary: analysisSummary } =

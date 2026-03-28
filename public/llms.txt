@@ -1,0 +1,52 @@
+# Found You — Photo Metadata Analyzer
+
+> Free, privacy-focused web tool for analyzing and removing metadata from photos. All processing happens locally in the browser — no files are ever uploaded to a server.
+
+## What It Does
+
+Found You helps users understand what personal information is embedded in their photos and provides tools to remove it before sharing. The tool extracts hidden metadata (EXIF, GPS coordinates, camera info, timestamps), detects faces and objects, recognizes text via OCR, and allows users to clean photos for safe publication.
+
+## Key Features
+
+- **Metadata Extraction**: Reads EXIF, XMP, IPTC, and ICC profiles from JPEG, PNG, WebP, AVIF, HEIC/HEIF images
+- **GPS Visualization**: Shows photo location on an interactive map with nearby points of interest
+- **Face Detection**: Identifies people in photos using COCO-SSD (TensorFlow.js) with one-click blurring
+- **OCR Text Recognition**: Recognizes Russian and English text in photos using Tesseract.js with region-level bounding boxes
+- **Photo Cleanup**: Removes all metadata, blurs faces/text, applies anti-reverse-image-search protection, removes PRNU camera fingerprints
+- **Historical Context**: Shows weather conditions and nearby surveillance cameras at the time and location the photo was taken
+- **Privacy Scoring**: Rates how much personal information a photo reveals before and after cleanup
+
+## Privacy Architecture
+
+- 100% client-side processing — images never leave the user's device
+- No user accounts, no cookies, no tracking
+- API calls only send coordinates and timestamps (never image data) to public geocoding and weather services
+- Open source
+
+## Supported Formats
+
+JPEG, PNG, WebP, AVIF, HEIC, HEIF, GIF, BMP
+
+## Languages
+
+Russian, English, Uzbek
+
+## Technology
+
+React 18, TypeScript, Vite, TensorFlow.js (COCO-SSD), Tesseract.js v7, exifr, MapLibre GL. Deployed on Cloudflare Pages.
+
+## URL
+
+https://foundyou.morgunov.tech/
+
+## Use Cases
+
+- Check what metadata your phone camera embeds before posting to social media
+- Remove GPS location from photos before sharing online
+- Blur faces and license plates for privacy compliance
+- Verify photo authenticity by inspecting camera and editing software metadata
+- Prepare photos for legal or journalistic use with verifiable cleanup
+
+## Contact
+
+Built by Morgunov Tech — https://morgunov.tech

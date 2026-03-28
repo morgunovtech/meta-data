@@ -3,8 +3,125 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Meta Data Insight</title>
+
+    <!-- Primary SEO -->
+    <title>Found You — Анализ метаданных фото | Photo Metadata Analyzer</title>
+    <meta name="description" content="Бесплатный онлайн-инструмент для анализа и удаления метаданных из фотографий. Извлекает EXIF, GPS, камеру, распознаёт текст (OCR) и лица. Всё работает локально в браузере — файлы никуда не отправляются." />
+    <meta name="keywords" content="метаданные фото, EXIF, удалить геолокацию, анализ фотографий, приватность, OCR, распознавание текста, размытие лиц, metadata, photo privacy, remove EXIF" />
+    <meta name="robots" content="index, follow" />
+    <meta name="author" content="Morgunov Tech" />
+    <link rel="canonical" href="https://foundyou.morgunov.tech/" />
+
+    <!-- Language alternates -->
+    <link rel="alternate" hreflang="ru" href="https://foundyou.morgunov.tech/" />
+    <link rel="alternate" hreflang="en" href="https://foundyou.morgunov.tech/" />
+    <link rel="alternate" hreflang="x-default" href="https://foundyou.morgunov.tech/" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://foundyou.morgunov.tech/" />
+    <meta property="og:title" content="Found You — Анализ метаданных фото" />
+    <meta property="og:description" content="Бесплатный инструмент для анализа и удаления метаданных из фотографий. EXIF, GPS, OCR, детекция лиц — всё локально в браузере." />
+    <meta property="og:locale" content="ru_RU" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:site_name" content="Found You" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Found You — Photo Metadata Analyzer" />
+    <meta name="twitter:description" content="Free browser-based tool to analyze and remove photo metadata. EXIF, GPS, OCR, face detection — all processed locally, nothing uploaded." />
+
+    <!-- Mobile & PWA -->
+    <meta name="theme-color" content="#1a1a2e" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Favicon -->
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+
+    <!-- Verification placeholders (replace with real codes) -->
+    <!-- <meta name="google-site-verification" content="YOUR_CODE" /> -->
+    <!-- <meta name="yandex-verification" content="YOUR_CODE" /> -->
+
+    <!-- Preconnect -->
     <link rel="preconnect" href="https://api.maptiler.com" />
+
+    <!-- Structured Data: WebApplication (Schema.org) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Found You",
+      "alternateName": "Meta Data Insight",
+      "url": "https://foundyou.morgunov.tech/",
+      "description": "Free privacy-focused tool to analyze and remove metadata from photos. Extracts EXIF, GPS, camera info, performs OCR and face detection. All processing happens locally in your browser — no files are uploaded.",
+      "applicationCategory": "UtilitiesApplication",
+      "operatingSystem": "Any (browser-based)",
+      "browserRequirements": "Requires JavaScript and WebGL",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "featureList": [
+        "EXIF/XMP/IPTC/ICC metadata extraction",
+        "GPS location visualization on map",
+        "Face detection and blurring",
+        "OCR text recognition (Russian + English)",
+        "Metadata removal and photo cleanup",
+        "Anti-reverse-image-search protection",
+        "PRNU fingerprint removal",
+        "HEIC/HEIF format support",
+        "100% local processing — no server uploads"
+      ],
+      "inLanguage": ["ru", "en", "uz"],
+      "creator": {
+        "@type": "Organization",
+        "name": "Morgunov Tech",
+        "url": "https://morgunov.tech"
+      },
+      "datePublished": "2024-06-01",
+      "softwareVersion": "2024.06.01"
+    }
+    </script>
+
+    <!-- Structured Data: FAQPage for rich snippets -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Безопасно ли загружать фото в Found You?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Да, полностью безопасно. Все фотографии обрабатываются локально в вашем браузере. Файлы никогда не отправляются на сервер — вся обработка (извлечение метаданных, OCR, детекция лиц) происходит на вашем устройстве."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Какие метаданные можно извлечь из фотографии?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Found You извлекает EXIF (камера, дата, настройки съёмки), GPS-координаты, XMP, IPTC (авторские права, описания), ICC (цветовой профиль). Также распознаёт текст на фото (OCR) и обнаруживает лица и объекты."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is Found You free to use?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes, Found You is completely free. It works in your browser with no registration, no uploads, and no limits. All processing is done locally on your device."
+          }
+        }
+      ]
+    }
+    </script>
+
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
