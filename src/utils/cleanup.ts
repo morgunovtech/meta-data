@@ -1,5 +1,6 @@
 import type { AntiSearchParams, ManualMask } from '../types/cleanup';
 import type { BoundingBox } from '../types/detection';
+import type { OCRRegion } from '../hooks/useOCR';
 
 interface BlurRegion {
   x: number;
@@ -377,4 +378,72 @@ export function applyWatermark(
   ctx.fillText(text, x, y);
   ctx.restore();
   return canvas;
+}
+
+/* ── blur OCR text regions ──────────────────────────────── */
+
+export function blurOcrRegions(
+  ctx: CanvasRenderingContext2D,
+  source: CanvasImageSource,
+  regions: OCRRegion[],
+  strength: number,
+  scale: number
+) {
+  for (const region of regions) {
+    const pad = 4;
+    const rect: BlurRegion = {
+      x: region.x * scale - pad,
+      y: region.y * scale - pad,
+      width: region.width * scale + pad * 2,
+      height: region.height * scale + pad * 2,
+    };
+    const clamped = clampRect(rect, ctx.canvas.width, ctx.canvas.height);
+    if (!clamped) continue;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(clamped.x, clamped.y, clamped.width, clamped.height);
+    ctx.clip();
+    ctx.filter = `blur(${Math.round(strength)}px)`;
+    ctx.drawImage(
+      source,
+      clamped.x, clamped.y, clamped.width, clamped.height,
+      clamped.x, clamped.y, clamped.width, clamped.height
+    );
+    ctx.filter = 'none';
+    ctx.restore();
+  }
+}
+
+/* ── horizontal flip (mirror) ───────────────────────────── */
+
+export function applyMirror(canvas: HTMLCanvasElement): HTMLCanvasElement {
+  const out = document.createElement('canvas');
+  out.width = canvas.width;
+  out.height = canvas.height;
+  const ctx = out.getContext('2d');
+  if (!ctx) return canvas;
+  ctx.translate(canvas.width, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(canvas, 0, 0);
+  return out;
+}
+
+/* ── downscale to max dimension ─────────────────────────── */
+
+export function applyDownscale(
+  canvas: HTMLCanvasElement,
+  maxDimension: number
+): HTMLCanvasElement {
+  const longest = Math.max(canvas.width, canvas.height);
+  if (longest <= maxDimension) return canvas;
+  const scale = maxDimension / longest;
+  const w = Math.max(1, Math.round(canvas.width * scale));
+  const h = Math.max(1, Math.round(canvas.height * scale));
+  const out = document.createElement('canvas');
+  out.width = w;
+  out.height = h;
+  const ctx = out.getContext('2d');
+  if (!ctx) return canvas;
+  ctx.drawImage(canvas, 0, 0, w, h);
+  return out;
 }

@@ -1596,6 +1596,23 @@ input[type='range'] {
   border-radius: 6px;
 }
 
+.cleanup-text-input {
+  display: block;
+  width: 100%;
+  margin-top: 0.4rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--color-surface, #2a2a3e);
+  color: inherit;
+  font-size: 0.85rem;
+  font-family: inherit;
+}
+
+.cleanup-text-input::placeholder {
+  opacity: 0.4;
+}
+
 .profile-header {
   display: flex;
   align-items: center;

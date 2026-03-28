@@ -42,10 +42,13 @@ export interface ProData {
 import {
   applyAntiSearch,
   applyColorReduction,
+  applyDownscale,
+  applyMirror,
   applyPrnuCleanup,
   applyWatermark,
   blurDetections,
   blurManualMasks,
+  blurOcrRegions,
   generateAntiSearchParams
 } from './utils/cleanup';
 
@@ -189,6 +192,11 @@ const App: React.FC = () => {
   const [antiSearchLevel, setAntiSearchLevel] = useState(2);
   const [antiSearchParams, setAntiSearchParams] = useState<AntiSearchParams | null>(null);
   const [watermarkEnabled, setWatermarkEnabled] = useState(false);
+  const [watermarkText, setWatermarkText] = useState('');
+  const [blurText, setBlurText] = useState(false);
+  const [mirrorEnabled, setMirrorEnabled] = useState(false);
+  const [downscaleMax, setDownscaleMax] = useState<number>(0); // 0 = off
+  const [outputFormat, setOutputFormat] = useState<'original' | 'jpeg' | 'png' | 'webp'>('original');
   const [processing, setProcessing] = useState(false);
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
@@ -230,6 +238,11 @@ const App: React.FC = () => {
       setAntiSearchParams(null);
       setAntiSearchLevel(2);
       setWatermarkEnabled(false);
+      setWatermarkText('');
+      setBlurText(false);
+      setMirrorEnabled(false);
+      setDownscaleMax(0);
+      setOutputFormat('original');
       setPreviewDimensions(null);
       await processFile(file);
     },
@@ -272,6 +285,10 @@ const App: React.FC = () => {
         blurDetections(ctx, baseCanvas, scaledDetections, blurStrength);
       }
 
+      if (blurText && ocrResult && ocrResult.regions.length > 0) {
+        blurOcrRegions(ctx, baseCanvas, ocrResult.regions, blurStrength, targetScale);
+      }
+
       if (scaledMasks.length > 0) {
         blurManualMasks(ctx, baseCanvas, scaledMasks, blurStrength);
       }
@@ -290,8 +307,17 @@ const App: React.FC = () => {
         workingCanvas = applyColorReduction(workingCanvas);
       }
 
+      if (mirrorEnabled) {
+        workingCanvas = applyMirror(workingCanvas);
+      }
+
+      if (downscaleMax > 0) {
+        workingCanvas = applyDownscale(workingCanvas, downscaleMax);
+      }
+
       if (watermark) {
-        workingCanvas = applyWatermark(workingCanvas, t('watermarkText'));
+        const wmText = watermarkText.trim() || t('watermarkText');
+        workingCanvas = applyWatermark(workingCanvas, wmText);
       }
 
       return workingCanvas;
@@ -299,15 +325,20 @@ const App: React.FC = () => {
     [
       fileInfo,
       blurFaces,
+      blurText,
+      ocrResult,
       personDetections,
       blurStrength,
       manualMasks,
       antiSearchEnabled,
       antiSearchParams,
       reduceColor,
-    watermark,
-    prnuCleanup,
-    t
+      mirrorEnabled,
+      downscaleMax,
+      watermark,
+      watermarkText,
+      prnuCleanup,
+      t
   ]
   );
 
@@ -325,26 +356,19 @@ const App: React.FC = () => {
       if (!canvas) {
         throw new Error('no-canvas');
       }
-      const mime = fileInfo.mimeType;
-      const extension = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
+      const originalMime = fileInfo.mimeType;
+      const exportMime = outputFormat === 'jpeg' ? 'image/jpeg'
+        : outputFormat === 'png' ? 'image/png'
+        : outputFormat === 'webp' ? 'image/webp'
+        : originalMime;
+      const extension = exportMime.includes('png') ? 'png' : exportMime.includes('webp') ? 'webp' : 'jpg';
       const jpegQuality = qualityForMode(qualityMode);
       const blob: Blob = await new Promise((resolve, reject) => {
-        if (mime === 'image/png') {
-          canvas.toBlob((result) => {
-            if (result) resolve(result);
-            else reject(new Error('export-failed'));
-          }, 'image/png');
-        } else if (mime === 'image/webp') {
-          canvas.toBlob((result) => {
-            if (result) resolve(result);
-            else reject(new Error('export-failed'));
-          }, 'image/webp', jpegQuality);
-        } else {
-          canvas.toBlob((result) => {
-            if (result) resolve(result);
-            else reject(new Error('export-failed'));
-          }, 'image/jpeg', jpegQuality);
-        }
+        const quality = exportMime === 'image/png' ? undefined : jpegQuality;
+        canvas.toBlob((result) => {
+          if (result) resolve(result);
+          else reject(new Error('export-failed'));
+        }, exportMime, quality);
       });
 
       const link = document.createElement('a');
@@ -422,13 +446,17 @@ const App: React.FC = () => {
   }, [
     fileInfo,
     blurFaces,
+    blurText,
     manualMasks,
     blurStrength,
     antiSearchEnabled,
     antiSearchParams,
     reduceColor,
+    mirrorEnabled,
+    downscaleMax,
     watermark,
     watermarkEnabled,
+    watermarkText,
     prnuCleanup,
     qualityMode,
     createProcessedCanvas
@@ -541,6 +569,17 @@ const App: React.FC = () => {
         setAntiSearchLevel={setAntiSearchLevel}
         watermarkEnabled={watermarkEnabled}
         setWatermarkEnabled={setWatermarkEnabled}
+        watermarkText={watermarkText}
+        setWatermarkText={setWatermarkText}
+        blurText={blurText}
+        setBlurText={setBlurText}
+        mirrorEnabled={mirrorEnabled}
+        setMirrorEnabled={setMirrorEnabled}
+        downscaleMax={downscaleMax}
+        setDownscaleMax={setDownscaleMax}
+        outputFormat={outputFormat}
+        setOutputFormat={setOutputFormat}
+        ocrRegionCount={ocrResult?.regions.length ?? 0}
         onClean={handleDownload}
         processing={processing}
         previewDataUrl={previewDataUrl}

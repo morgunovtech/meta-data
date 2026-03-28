@@ -2,9 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { BoundingBox } from '../types/detection';
 import type { BasicFileInfo } from '../types/metadata';
 import type { CleanupPreviewDimensions, ManualMask, QualityMode } from '../types/cleanup';
-import { useT } from '../i18n';
+import { useI18n, useT } from '../i18n';
 import { formatBytesPrecise } from '../utils/format';
 import { buildCleanupSummary } from '../utils/cleanupSummary';
+
+type OutputFormat = 'original' | 'jpeg' | 'png' | 'webp';
 
 interface CleanupDownloadBlockProps {
   fileInfo: BasicFileInfo | null;
@@ -30,6 +32,17 @@ interface CleanupDownloadBlockProps {
   setAntiSearchEnabled: (value: boolean) => void;
   setAntiSearchLevel: (value: number) => void;
   setWatermarkEnabled: (value: boolean) => void;
+  watermarkText: string;
+  setWatermarkText: (value: string) => void;
+  blurText: boolean;
+  setBlurText: (value: boolean) => void;
+  mirrorEnabled: boolean;
+  setMirrorEnabled: (value: boolean) => void;
+  downscaleMax: number;
+  setDownscaleMax: (value: number) => void;
+  outputFormat: OutputFormat;
+  setOutputFormat: (value: OutputFormat) => void;
+  ocrRegionCount: number;
   onClean: () => Promise<void>;
   processing: boolean;
   previewDataUrl: string | null;
@@ -72,6 +85,17 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
   setAntiSearchEnabled,
   setAntiSearchLevel,
   setWatermarkEnabled,
+  watermarkText,
+  setWatermarkText,
+  blurText,
+  setBlurText,
+  mirrorEnabled,
+  setMirrorEnabled,
+  downscaleMax,
+  setDownscaleMax,
+  outputFormat,
+  setOutputFormat,
+  ocrRegionCount,
   onClean,
   processing,
   previewDataUrl,
@@ -81,6 +105,7 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
   originalPreviewUrl
 }) => {
   const t = useT();
+  const { lang } = useI18n();
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [draftStroke, setDraftStroke] = useState<ManualMask | null>(null);
@@ -185,15 +210,21 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
     setRemoveMetadata(true);
     setRenameFile(true);
     setBlurFaces(true);
+    setBlurText(true);
     setManualMaskMode(true);
     setAntiSearchEnabled(true);
     setAntiSearchLevel(3);
     setWatermarkEnabled(true);
+    setMirrorEnabled(false); // mirror is destructive, not in "apply all"
+    setDownscaleMax(1920);
   }, [
     setAntiSearchEnabled,
     setAntiSearchLevel,
     setBlurFaces,
+    setBlurText,
+    setDownscaleMax,
     setManualMaskMode,
+    setMirrorEnabled,
     setRemoveMetadata,
     setRenameFile,
     setWatermarkEnabled
@@ -476,7 +507,84 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
             <strong>{t('watermarkToggle')}</strong>
             <small>{t('watermarkHint')}</small>
           </span>
+          {watermarkEnabled ? (
+            <input
+              type="text"
+              className="cleanup-text-input"
+              placeholder={t('watermarkText')}
+              value={watermarkText}
+              onChange={(event) => setWatermarkText(event.target.value)}
+            />
+          ) : null}
         </label>
+        <label className={`cleanup-checkbox ${blurText ? 'is-active' : ''}`}>
+          <input
+            type="checkbox"
+            checked={blurText}
+            onChange={(event) => setBlurText(event.target.checked)}
+          />
+          <span>
+            <strong>{lang === 'ru' ? 'Скрыть текст' : lang === 'uz' ? 'Matnni yashirish' : 'Blur text'}</strong>
+            <small>
+              {lang === 'ru'
+                ? `Размоет распознанный текст на фото (${ocrRegionCount} фрагментов)`
+                : `Blur recognized text in photo (${ocrRegionCount} fragments)`}
+            </small>
+          </span>
+        </label>
+        <label className={`cleanup-checkbox ${mirrorEnabled ? 'is-active' : ''}`}>
+          <input
+            type="checkbox"
+            checked={mirrorEnabled}
+            onChange={(event) => setMirrorEnabled(event.target.checked)}
+          />
+          <span>
+            <strong>{lang === 'ru' ? 'Отзеркалить' : lang === 'uz' ? 'Aks ettirish' : 'Mirror'}</strong>
+            <small>
+              {lang === 'ru'
+                ? 'Горизонтальный флип — ломает обратный поиск по картинке'
+                : 'Horizontal flip — breaks reverse image search'}
+            </small>
+          </span>
+        </label>
+        <div className="cleanup-card cleanup-card--select">
+          <label className="cleanup-select">
+            <span>{lang === 'ru' ? 'Уменьшить разрешение' : 'Downscale'}</span>
+            <select
+              value={downscaleMax}
+              onChange={(event) => setDownscaleMax(Number(event.target.value))}
+            >
+              <option value={0}>{lang === 'ru' ? 'Без изменений' : 'No change'}</option>
+              <option value={1280}>{lang === 'ru' ? 'Мессенджер (1280px)' : 'Messenger (1280px)'}</option>
+              <option value={1920}>{lang === 'ru' ? 'Соцсети (1920px)' : 'Social media (1920px)'}</option>
+              <option value={2560}>{lang === 'ru' ? 'Умеренное (2560px)' : 'Moderate (2560px)'}</option>
+            </select>
+          </label>
+          <p className="cleanup-select__helper">
+            {lang === 'ru'
+              ? 'Меньшее разрешение = меньше деталей для идентификации'
+              : 'Lower resolution = fewer details for identification'}
+          </p>
+        </div>
+        <div className="cleanup-card cleanup-card--select">
+          <label className="cleanup-select">
+            <span>{lang === 'ru' ? 'Формат экспорта' : 'Export format'}</span>
+            <select
+              value={outputFormat}
+              onChange={(event) => setOutputFormat(event.target.value as OutputFormat)}
+            >
+              <option value="original">{lang === 'ru' ? 'Как в оригинале' : 'Same as original'}</option>
+              <option value="jpeg">JPEG</option>
+              <option value="png">PNG</option>
+              <option value="webp">WebP</option>
+            </select>
+          </label>
+          <p className="cleanup-select__helper">
+            {lang === 'ru'
+              ? 'Конвертация меняет хеш и сбрасывает часть метаданных'
+              : 'Conversion changes hash and strips some metadata'}
+          </p>
+        </div>
       </div>
 
       {manualMaskMode ? <p className="cleanup-preview__hint">{t('manualMaskDrawingHint')}</p> : null}
