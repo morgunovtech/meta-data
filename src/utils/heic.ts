@@ -9,24 +9,60 @@ type RawMetadata = {
 };
 
 export async function extractMetadataFromOriginal(file: File): Promise<RawMetadata> {
-  const [exifData, xmpData, iptcData, iccData, gpsRaw] = await Promise.all([
+  // Parse all segments in one pass — avoids the separate exifr.xmp/iptc/icc
+  // calls which have broken types in exifr v7 and silently fail on some files.
+  const parsed = await safeExtract(() =>
     exifr.parse(file, {
+      tiff: true,
       exif: true,
       gps: true,
-      translateKeys: true
-    }),
-    safeExtract(() => exifr.xmp(file)),
-    safeExtract(() => exifr.iptc(file)),
-    safeExtract(() => exifr.icc(file)),
-    safeExtract(() => exifr.gps(file))
-  ]);
+      xmp: true,
+      iptc: true,
+      icc: true,
+      translateKeys: true,
+      translateValues: false,
+    })
+  ) as Record<string, unknown> | undefined;
+
+  const gpsRaw = await safeExtract(() => (exifr as any).gps(file));
+
+  const base = parsed ?? {};
+
+  // exifr returns all segments merged into one flat object when parsed together.
+  // Split them back into logical groups for the rest of the pipeline.
+  const GPS_KEYS = new Set(['latitude', 'longitude', 'altitude', 'latitudeRef', 'longitudeRef',
+    'altitudeRef', 'speed', 'speedRef', 'heading', 'headingRef', 'accuracy',
+    'GPSLatitude', 'GPSLongitude', 'GPSAltitude', 'GPSLatitudeRef', 'GPSLongitudeRef',
+    'GPSAltitudeRef', 'GPSSpeed', 'GPSSpeedRef', 'GPSImgDirection', 'GPSImgDirectionRef',
+    'lat', 'lon', 'gpsHPositioningError', 'GPSDOP']);
+  const XMP_KEYS = new Set(['Rating', 'Label', 'Subject', 'Description', 'Title',
+    'Creator', 'Rights', 'CreatorTool', 'CreateDate', 'ModifyDate', 'MetadataDate',
+    'xmp', 'dc', 'photoshop', 'xmpMM', 'crs']);
+  const IPTC_KEYS = new Set(['ObjectName', 'Caption', 'Keywords', 'Byline', 'BylineTitle',
+    'Credit', 'Source', 'CopyrightNotice', 'City', 'Province', 'Country',
+    'CountryCode', 'Category', 'SupplementalCategories', 'Headline', 'SpecialInstructions']);
+  const ICC_KEYS = new Set(['ProfileDescription', 'ColorSpaceData', 'ProfileConnectionSpace',
+    'ProfileClass', 'RenderingIntent', 'MediaWhitePoint', 'MediaBlackPoint',
+    'RedColorant', 'GreenColorant', 'BlueColorant']);
+
+  const exifData: Record<string, unknown> = {};
+  const xmpData: Record<string, unknown> = {};
+  const iptcData: Record<string, unknown> = {};
+  const iccData: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(base)) {
+    if (ICC_KEYS.has(key)) { iccData[key] = value; }
+    else if (IPTC_KEYS.has(key)) { iptcData[key] = value; }
+    else if (XMP_KEYS.has(key)) { xmpData[key] = value; }
+    else { exifData[key] = value; }
+  }
 
   return {
-    exifData: (exifData ?? {}) as Record<string, unknown>,
-    xmpData: (xmpData ?? {}) as Record<string, unknown>,
-    iptcData: (iptcData ?? {}) as Record<string, unknown>,
-    iccData: (iccData ?? {}) as Record<string, unknown>,
-    gpsRaw: (gpsRaw ?? {}) as Record<string, unknown>
+    exifData,
+    xmpData,
+    iptcData,
+    iccData,
+    gpsRaw: (gpsRaw ?? {}) as Record<string, unknown>,
   };
 }
 
