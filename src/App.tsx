@@ -9,10 +9,13 @@ import { MetadataPanel } from './components/MetadataPanel';
 import { ShockBlock } from './components/ShockBlock';
 import { CleanupDownloadBlock } from './components/CleanupDownloadBlock';
 import { useImageAnalysis } from './hooks/useImageAnalysis';
+import { useOCR } from './hooks/useOCR';
+import { OCRBlock } from './components/OCRBlock';
 import type { ManualCoordinates } from './types/metadata';
 import { useI18n, useT } from './i18n';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
 import type { AntiSearchParams, CleanupPreviewDimensions, ManualMask, QualityMode } from './types/cleanup';
+import { generateSceneNarrative } from './utils/sceneNarrative';
 import {
   applyAntiSearch,
   applyColorReduction,
@@ -45,8 +48,6 @@ async function loadImageElement(src: string): Promise<HTMLImageElement> {
 const blurDefault = 28;
 const PREVIEW_MAX_DIMENSION = 2400;
 
-const RU_PLURAL_RANGE = { few: [2, 3, 4], many: [0, 5, 6, 7, 8, 9] };
-
 function qualityForMode(mode: QualityMode): number {
   switch (mode) {
     case 'low':
@@ -78,6 +79,7 @@ const App: React.FC = () => {
   const { metadata } = useExifMetadata(fileInfo);
   const { loading: analysisLoading, error: analysisError, detectionStatus, detections, summary: analysisSummary } =
     useImageAnalysis(fileInfo);
+  const { loading: ocrLoading, error: ocrError, result: ocrResult, progress: ocrProgress } = useOCR(fileInfo);
 
   type NoticeState = { type: 'success' | 'error'; message: string };
 
@@ -102,30 +104,6 @@ const App: React.FC = () => {
   const reduceColor = antiSearchEnabled && antiSearchLevel === 3;
   const prnuCleanup = removeMetadata;
   const watermark = watermarkEnabled;
-
-  const formatCountLabel = useCallback(
-    (count: number, kind: 'person' | 'vehicle' | 'animal') => {
-      const base =
-        kind === 'person' ? 'nounPerson' : kind === 'vehicle' ? 'nounVehicle' : 'nounAnimal';
-      if (lang === 'ru') {
-        const mod10 = count % 10;
-        const mod100 = count % 100;
-        const form =
-          mod10 === 1 && mod100 !== 11
-            ? 'One'
-            : RU_PLURAL_RANGE.few.includes(mod10) && ![12, 13, 14].includes(mod100)
-            ? 'Few'
-            : 'Many';
-        return `${count} ${t(`${base}${form}` as const)}`;
-      }
-      if (lang === 'uz') {
-        return `${count} ta ${t(`${base}One` as const)}`;
-      }
-      const form = count === 1 ? 'One' : 'Many';
-      return `${count} ${t(`${base}${form}` as const)}`;
-    },
-    [lang, t]
-  );
 
   const personDetections = useMemo(
     () => detections.filter((det) => det.label === 'person'),
@@ -374,28 +352,16 @@ const App: React.FC = () => {
   }, []);
 
   const sceneDescription = useMemo(() => {
-    if (!analysisSummary) {
-      if (analysisLoading) return t('sceneDescriptionLoading');
-      if (analysisError) return t('sceneDescriptionUnavailable');
-      return detections.length > 0
-        ? t('sceneDescriptionDetected', { items: t('previewObjectsFound', { count: detections.length }) })
-        : t('sceneDescriptionEmpty');
-    }
-    const segments: string[] = [];
-    if (analysisSummary.people > 0) {
-      segments.push(formatCountLabel(analysisSummary.people, 'person'));
-    }
-    if (analysisSummary.vehicles > 0) {
-      segments.push(formatCountLabel(analysisSummary.vehicles, 'vehicle'));
-    }
-    if (analysisSummary.animals > 0) {
-      segments.push(formatCountLabel(analysisSummary.animals, 'animal'));
-    }
-    if (segments.length === 0) {
-      return t('sceneDescriptionEmpty');
-    }
-    return t('sceneDescriptionDetected', { items: segments.join('; ') });
-  }, [analysisSummary, analysisLoading, analysisError, detections.length, formatCountLabel, t]);
+    if (analysisLoading) return t('sceneDescriptionLoading');
+    if (analysisError) return t('sceneDescriptionUnavailable');
+    if (!fileInfo || detections.length === 0) return t('sceneDescriptionEmpty');
+    return generateSceneNarrative({
+      detections,
+      imageWidth: fileInfo.width,
+      imageHeight: fileInfo.height,
+      lang,
+    });
+  }, [analysisLoading, analysisError, fileInfo, detections, lang, t]);
 
   return (
     <div className="app-shell">
@@ -426,6 +392,15 @@ const App: React.FC = () => {
           </div>
           <MetadataPanel fileInfo={fileInfo} metadata={metadata} />
         </div>
+      ) : null}
+
+      {fileInfo ? (
+        <OCRBlock
+          result={ocrResult}
+          loading={ocrLoading}
+          error={ocrError}
+          progress={ocrProgress}
+        />
       ) : null}
 
       {fileInfo ? (
