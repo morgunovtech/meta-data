@@ -1,6 +1,5 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
@@ -35,8 +34,8 @@ function functionsDevProxy() {
         }
 
         try {
-          const moduleUrl = `${pathToFileURL(filePath).href}?t=${Date.now()}`;
-          const mod = await import(moduleUrl);
+          // Use Vite's ssrLoadModule to properly transform TypeScript
+          const mod = await server.ssrLoadModule(`/functions/api/${functionName}.ts`);
           if (typeof mod.onRequest !== 'function') {
             res.statusCode = 500;
             res.end('Function missing onRequest');
@@ -52,7 +51,8 @@ function functionsDevProxy() {
             }
           }
 
-          const request = new Request(requestUrl.toString(), {
+          const fullUrl = new URL(url, `http://${req.headers.host || 'localhost:5173'}`);
+          const request = new Request(fullUrl.toString(), {
             method: req.method,
             headers
           });
@@ -72,7 +72,7 @@ function functionsDevProxy() {
         } catch (error) {
           console.error('functions-dev-proxy', error);
           res.statusCode = 500;
-          res.end('Function execution failed');
+          res.end(JSON.stringify({ ok: false, error: 'Function execution failed' }));
         }
       });
     }
