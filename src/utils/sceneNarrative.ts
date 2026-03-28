@@ -196,7 +196,6 @@ function buildPhrase(entry: GroupedEntry, lang: Lang): string {
 
   // Skip midground depth label (it's empty)
   if (lang === 'ru') {
-    const parts = [depth, '—', object, `(${zone})`].filter(Boolean);
     if (!depth) return `${object} (${zone})`;
     return `${depth} — ${object} (${zone})`;
   }
