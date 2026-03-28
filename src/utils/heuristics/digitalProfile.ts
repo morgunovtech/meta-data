@@ -189,17 +189,34 @@ export function generateDigitalProfile(input: ProfileInput): DigitalProfile {
     });
   }
 
-  // ── Temporal ──
+  // ── Temporal (always show) ──
   if (temporal.length > 0) {
-    const main = temporal[0];
+    // Show ALL temporal insights, not just the first
+    const allFacts = temporal.map(t => t.fact).join('. ');
+    const allInferences = temporal.map(t => t.inference).filter(Boolean).join('. ');
+    const maxSeverity = temporal.reduce<Severity>((max, t) => {
+      if (t.severity === 'high') return 'high';
+      if (t.severity === 'medium' && max !== 'high') return 'medium';
+      return max;
+    }, 'low');
     sections.push({
       icon: '🕐',
       title: lang === 'ru' ? 'Время и привычки' : lang === 'uz' ? 'Vaqt va odatlar' : 'Time & habits',
-      text: main.fact,
-      subtext: main.inference || null,
-      leakPoints: main.severity === 'high' ? 15 : 8,
-      severity: main.severity,
+      text: allFacts,
+      subtext: allInferences || null,
+      leakPoints: maxSeverity === 'high' ? 15 : 8,
+      severity: maxSeverity,
       threatScenario: THREATS.datetime[lang],
+    });
+  } else {
+    sections.push({
+      icon: '🕐',
+      title: lang === 'ru' ? 'Время и привычки' : lang === 'uz' ? 'Vaqt va odatlar' : 'Time & habits',
+      text: lang === 'ru' ? 'Дата/время съёмки не найдены' : lang === 'uz' ? 'Suratga olish sanasi/vaqti topilmadi' : 'Shot date/time not found',
+      subtext: lang === 'ru' ? 'Временные метаданные отсутствуют или были удалены' : 'Temporal metadata is missing or was stripped',
+      leakPoints: 0,
+      severity: 'low',
+      threatScenario: null,
     });
   }
 
@@ -236,7 +253,7 @@ export function generateDigitalProfile(input: ProfileInput): DigitalProfile {
     });
   }
 
-  // ── Editing / AI ──
+  // ── AI detection (always show) ──
   if (editing.isAiGenerated) {
     sections.push({
       icon: '🤖',
@@ -244,10 +261,23 @@ export function generateDigitalProfile(input: ProfileInput): DigitalProfile {
       text: editing.aiTool ?? 'AI',
       subtext: lang === 'ru' ? 'Фото создано нейросетью' : 'Photo created by AI',
       leakPoints: 0,
-      severity: 'low',
+      severity: 'medium',
       threatScenario: THREATS.ai[lang],
     });
-  } else if (editing.edited) {
+  } else {
+    sections.push({
+      icon: '🤖',
+      title: lang === 'ru' ? 'AI-генерация' : lang === 'uz' ? 'AI-generatsiya' : 'AI check',
+      text: lang === 'ru' ? 'Признаков AI-генерации не обнаружено' : lang === 'uz' ? 'AI-generatsiya belgilari topilmadi' : 'No AI generation signs detected',
+      subtext: lang === 'ru' ? 'Проверены XMP-теги и метаданные ПО' : 'Checked XMP tags and software metadata',
+      leakPoints: 0,
+      severity: 'low',
+      threatScenario: null,
+    });
+  }
+
+  // ── Editing (always show) ──
+  if (editing.edited) {
     sections.push({
       icon: '🖌️',
       title: lang === 'ru' ? 'Обработка' : lang === 'uz' ? 'Tahrirlash' : 'Editing',
@@ -257,9 +287,19 @@ export function generateDigitalProfile(input: ProfileInput): DigitalProfile {
       severity: 'low',
       threatScenario: null,
     });
+  } else {
+    sections.push({
+      icon: '🖌️',
+      title: lang === 'ru' ? 'Обработка' : lang === 'uz' ? 'Tahrirlash' : 'Editing',
+      text: lang === 'ru' ? 'Следов редактирования не обнаружено' : lang === 'uz' ? 'Tahrirlash izlari topilmadi' : 'No editing traces detected',
+      subtext: null,
+      leakPoints: 0,
+      severity: 'low',
+      threatScenario: null,
+    });
   }
 
-  // ── Stripped metadata ──
+  // ── Origin / messenger (always show) ──
   if (stripped.stripped) {
     sections.push({
       icon: '💬',
@@ -269,6 +309,16 @@ export function generateDigitalProfile(input: ProfileInput): DigitalProfile {
         : (lang === 'ru' ? 'Метаданные были удалены' : 'Metadata was stripped'),
       subtext: stripped.evidence[0] ?? null,
       leakPoints: 5,
+      severity: 'medium',
+      threatScenario: null,
+    });
+  } else {
+    sections.push({
+      icon: '💬',
+      title: lang === 'ru' ? 'Происхождение' : lang === 'uz' ? 'Kelib chiqishi' : 'Origin',
+      text: lang === 'ru' ? 'Оригинальный файл (не из мессенджера)' : lang === 'uz' ? 'Original fayl (messenjerdan emas)' : 'Original file (not from a messenger)',
+      subtext: lang === 'ru' ? 'Метаданные сохранены — файл не проходил через сервисы сжатия' : 'Metadata preserved — file was not re-compressed by a service',
+      leakPoints: 0,
       severity: 'low',
       threatScenario: null,
     });
