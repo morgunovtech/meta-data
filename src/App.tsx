@@ -482,7 +482,7 @@ const App: React.FC = () => {
       ) : null}
 
       {fileInfo && digitalProfile ? (
-        <ProfileBlock profile={digitalProfile} lang={lang} />
+        <ProfileBlock profile={digitalProfile} lang={lang} metadata={metadata} />
       ) : null}
 
       {fileInfo ? (
