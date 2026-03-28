@@ -78,22 +78,27 @@ export function useOCR(fileInfo: BasicFileInfo | null) {
 
         // Tesseract.js v7 structure: data.blocks[].paragraphs[].lines[].words[]
         const regions: OCRRegion[] = [];
-        const textLines: string[] = [];
+        const cleanLines: string[] = [];
 
         for (const block of data.blocks ?? []) {
           for (const paragraph of block.paragraphs ?? []) {
             for (const line of paragraph.lines ?? []) {
-              if (line.confidence < 30) continue;
-              const lineText = line.text?.trim();
-              if (lineText && lineText.length > 0) {
-                textLines.push(lineText);
-              }
+              if (line.confidence < 50) continue;
+
+              // Collect clean words from this line
+              const goodWords: string[] = [];
               for (const word of line.words ?? []) {
-                if (word.confidence < 40) continue;
-                if (word.text.trim().length < 2) continue;
+                const w = word.text.trim();
+                if (word.confidence < 55) continue;
+                if (w.length < 2) continue;
+                // Skip tokens that are mostly punctuation/symbols
+                const alphaCount = (w.match(/[\p{L}\p{N}]/gu) ?? []).length;
+                if (alphaCount / w.length < 0.5) continue;
+                goodWords.push(w);
+
                 const bbox = word.bbox;
                 regions.push({
-                  text: word.text,
+                  text: w,
                   x: bbox.x0,
                   y: bbox.y0,
                   width: bbox.x1 - bbox.x0,
@@ -101,14 +106,17 @@ export function useOCR(fileInfo: BasicFileInfo | null) {
                   confidence: word.confidence,
                 });
               }
+
+              // Only keep lines with at least 2 meaningful characters total
+              const lineText = goodWords.join(' ');
+              const lineAlpha = (lineText.match(/[\p{L}\p{N}]/gu) ?? []).length;
+              if (lineAlpha < 3) continue;
+              cleanLines.push(lineText);
             }
           }
         }
 
-        // Fallback: use data.text if block traversal yielded nothing
-        const fullText = textLines.length > 0
-          ? textLines.join('\n')
-          : (data.text ?? '').trim();
+        const fullText = cleanLines.join('\n');
 
         setResult({ fullText, regions });
 
