@@ -67,7 +67,12 @@ export function useOCR(fileInfo: BasicFileInfo | null) {
         }
 
         // Use the original File object for best quality
-        const { data } = await worker.recognize(fileInfo.file);
+        // Request blocks output explicitly (disabled by default in v7)
+        const { data } = await worker.recognize(
+          fileInfo.file,
+          undefined,
+          { text: true, blocks: true }
+        );
 
         if (cancelled) {
           await worker.terminate();
@@ -116,7 +121,10 @@ export function useOCR(fileInfo: BasicFileInfo | null) {
           }
         }
 
-        const fullText = cleanLines.join('\n');
+        // Use block-extracted lines, fall back to data.text if blocks empty
+        const fullText = cleanLines.length > 0
+          ? cleanLines.join('\n')
+          : (data.text ?? '').trim();
 
         setResult({ fullText, regions });
 
