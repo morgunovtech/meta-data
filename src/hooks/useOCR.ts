@@ -83,17 +83,17 @@ export function useOCR(fileInfo: BasicFileInfo | null) {
         for (const block of data.blocks ?? []) {
           for (const paragraph of block.paragraphs ?? []) {
             for (const line of paragraph.lines ?? []) {
-              if (line.confidence < 50) continue;
+              if (line.confidence < 25) continue;
 
               // Collect clean words from this line
               const goodWords: string[] = [];
               for (const word of line.words ?? []) {
                 const w = word.text.trim();
-                if (word.confidence < 55) continue;
+                if (word.confidence < 30) continue;
                 if (w.length < 2) continue;
-                // Skip tokens that are mostly punctuation/symbols
+                // Skip tokens that are purely punctuation/symbols
                 const alphaCount = (w.match(/[\p{L}\p{N}]/gu) ?? []).length;
-                if (alphaCount / w.length < 0.5) continue;
+                if (alphaCount === 0) continue;
                 goodWords.push(w);
 
                 const bbox = word.bbox;
