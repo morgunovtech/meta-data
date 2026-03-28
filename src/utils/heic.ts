@@ -92,11 +92,17 @@ function createImageFromBlob(blob: Blob): Promise<HTMLImageElement> {
 }
 
 export async function decodeHeicToJpegForPreview(sourceFile: File): Promise<HeicDecodeResult> {
-  const heic2any = (await import('heic2any')) as unknown as (options: {
+  // heic2any is a UMD module — dynamic import wraps it as { default: fn }
+  const mod = await import('heic2any');
+  const heic2any = (typeof mod === 'function' ? mod : (mod as any).default) as (options: {
     blob: Blob;
     toType?: string;
     quality?: number;
   }) => Promise<Blob | Blob[]>;
+
+  if (typeof heic2any !== 'function') {
+    throw new Error('heic2any module failed to load');
+  }
 
   let jpegBlob: Blob;
   try {
