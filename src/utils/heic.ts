@@ -91,42 +91,79 @@ function createImageFromBlob(blob: Blob): Promise<HTMLImageElement> {
   });
 }
 
-export async function decodeHeicToJpegForPreview(sourceFile: File): Promise<HeicDecodeResult> {
-  // heic2any is a UMD module — dynamic import wraps it as { default: fn }
-  const mod = await import('heic2any');
-  const heic2any = (typeof mod === 'function' ? mod : (mod as any).default) as (options: {
-    blob: Blob;
-    toType?: string;
-    quality?: number;
-  }) => Promise<Blob | Blob[]>;
-
-  if (typeof heic2any !== 'function') {
-    throw new Error('heic2any module failed to load');
-  }
-
-  let jpegBlob: Blob;
+/**
+ * Try native browser HEIC decoding via createImageBitmap.
+ * Chrome 118+, Safari 17+ can decode HEIC natively.
+ */
+async function tryNativeDecode(file: File): Promise<ImageBitmap | null> {
+  if (typeof createImageBitmap !== 'function') return null;
   try {
-    const converted = await heic2any({ blob: sourceFile, toType: 'image/jpeg', quality: 0.92 });
-    jpegBlob = Array.isArray(converted) ? converted[0] : converted;
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : 'heic-convert';
-    throw new Error(`heic-convert:${reason}`);
+    const bitmap = await createImageBitmap(file);
+    // Sanity check: if the bitmap is 0x0 or very small, it's a decode failure
+    if (bitmap.width < 2 || bitmap.height < 2) {
+      bitmap.close();
+      return null;
+    }
+    return bitmap;
+  } catch {
+    return null;
+  }
+}
+
+export async function decodeHeicToJpegForPreview(sourceFile: File): Promise<HeicDecodeResult> {
+  // Strategy 1: Try native browser HEIC decoding (fastest, most compatible)
+  const nativeBitmap = await tryNativeDecode(sourceFile);
+
+  let image: { width: number; height: number; source: CanvasImageSource; cleanup?: () => void };
+
+  if (nativeBitmap) {
+    image = {
+      width: nativeBitmap.width,
+      height: nativeBitmap.height,
+      source: nativeBitmap,
+      cleanup: () => nativeBitmap.close(),
+    };
+  } else {
+    // Strategy 2: Fallback to heic2any library
+    const mod = await import('heic2any');
+    const heic2any = (typeof mod === 'function' ? mod : (mod as any).default) as (options: {
+      blob: Blob;
+      toType?: string;
+      quality?: number;
+    }) => Promise<Blob | Blob[]>;
+
+    if (typeof heic2any !== 'function') {
+      throw new Error('heic2any module failed to load');
+    }
+
+    let jpegBlob: Blob;
+    try {
+      const converted = await heic2any({ blob: sourceFile, toType: 'image/jpeg', quality: 0.92 });
+      jpegBlob = Array.isArray(converted) ? converted[0] : converted;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'heic-convert';
+      throw new Error(`heic-convert:${reason}`);
+    }
+
+    const imgEl = await createImageFromBlob(jpegBlob);
+    image = { width: imgEl.naturalWidth, height: imgEl.naturalHeight, source: imgEl };
   }
 
-  const image = await createImageFromBlob(jpegBlob);
-  const maxSide = Math.max(image.naturalWidth, image.naturalHeight);
+  const maxSide = Math.max(image.width, image.height);
   const scale = Math.min(1, HEIC_MAX_SIDE / Math.max(1, maxSide));
-  const targetWidth = Math.max(1, Math.round(image.naturalWidth * scale));
-  const targetHeight = Math.max(1, Math.round(image.naturalHeight * scale));
+  const targetWidth = Math.max(1, Math.round(image.width * scale));
+  const targetHeight = Math.max(1, Math.round(image.height * scale));
 
   const canvas = document.createElement('canvas');
   canvas.width = targetWidth;
   canvas.height = targetHeight;
   const ctx = canvas.getContext('2d');
   if (!ctx) {
+    image.cleanup?.();
     throw new Error('canvas');
   }
-  ctx.drawImage(image, 0, 0, targetWidth, targetHeight);
+  ctx.drawImage(image.source, 0, 0, targetWidth, targetHeight);
+  image.cleanup?.();
 
   const blob: Blob = await new Promise((resolve, reject) => {
     canvas.toBlob((result) => {
@@ -143,8 +180,8 @@ export async function decodeHeicToJpegForPreview(sourceFile: File): Promise<Heic
 
   return {
     file,
-    width: image.naturalWidth,
-    height: image.naturalHeight
+    width: image.width,
+    height: image.height
   };
 }
 
