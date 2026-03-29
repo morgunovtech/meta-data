@@ -11,7 +11,6 @@ import { CleanupDownloadBlock } from './components/CleanupDownloadBlock';
 import { useImageAnalysis } from './hooks/useImageAnalysis';
 import { useOCR } from './hooks/useOCR';
 import { OCRBlock } from './components/OCRBlock';
-import type { ManualCoordinates } from './types/metadata';
 import { useI18n, useT } from './i18n';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
 import type { AntiSearchParams, CleanupPreviewDimensions, ManualMask, QualityMode } from './types/cleanup';
@@ -180,7 +179,6 @@ const App: React.FC = () => {
 
   type NoticeState = { type: 'success' | 'error'; message: string };
 
-  const [manualCoords, setManualCoords] = useState<ManualCoordinates | null>(null);
   const [removeMetadata, setRemoveMetadata] = useState(true);
   const [blurFaces, setBlurFaces] = useState(false);
   const [blurStrength, setBlurStrength] = useState(blurDefault);
@@ -222,7 +220,6 @@ const App: React.FC = () => {
 
   const handleFile = useCallback(
     async (file: File) => {
-      setManualCoords(null);
       setRemoveMetadata(true);
       setBlurFaces(false);
       setBlurStrength(blurDefault);
@@ -538,11 +535,7 @@ const App: React.FC = () => {
       ) : null}
 
       {fileInfo ? (
-        <ShockBlock
-          metadata={metadata}
-          manualCoords={manualCoords}
-          onManualCoordsChange={setManualCoords}
-        />
+        <ShockBlock metadata={metadata} />
       ) : null}
 
       <CleanupDownloadBlock

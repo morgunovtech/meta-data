@@ -1596,6 +1596,31 @@ input[type='range'] {
   border-radius: 6px;
 }
 
+.cleanup-card--compound {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.cleanup-card--compound > strong {
+  font-size: 0.9rem;
+  margin-bottom: 0.2rem;
+}
+
+.cleanup-checkbox--nested {
+  padding: 0.2rem 0;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.cleanup-checkbox--nested input[type="checkbox"] {
+  margin: 0;
+}
+
 .cleanup-text-input {
   display: block;
   width: 100%;

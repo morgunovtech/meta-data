@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useT } from '../i18n';
-import type { StructuredMetadata, ManualCoordinates } from '../types/metadata';
+import type { StructuredMetadata } from '../types/metadata';
 import type { ReverseGeocodeResult, HistoricalWeatherResult, PoiResult } from '../types/api';
 import { useAPIFetch } from '../hooks/useAPIFetch';
 import { inferMovement, summarizeWeather } from '../utils/insights';
@@ -9,36 +9,18 @@ import { DataInsightsCompact } from './DataInsightsCompact';
 
 interface ShockBlockProps {
   metadata: StructuredMetadata | null;
-  manualCoords: ManualCoordinates | null;
-  onManualCoordsChange: (coords: ManualCoordinates | null) => void;
 }
 
-export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, onManualCoordsChange }) => {
+export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata }) => {
   const t = useT();
-  const [latInput, setLatInput] = useState('');
-  const [lonInput, setLonInput] = useState('');
   const gpsHeading = metadata?.gps?.heading;
 
-  useEffect(() => {
-    if (manualCoords) {
-      setLatInput(manualCoords.lat.toFixed(5));
-      setLonInput(manualCoords.lon.toFixed(5));
-    } else if (metadata?.gps) {
-      setLatInput(metadata.gps.lat.toFixed(5));
-      setLonInput(metadata.gps.lon.toFixed(5));
-    } else {
-      setLatInput('');
-      setLonInput('');
-    }
-  }, [manualCoords, metadata?.gps?.lat, metadata?.gps?.lon]);
-
   const coords = useMemo(() => {
-    if (manualCoords) return manualCoords;
     if (metadata?.gps) {
       return { lat: metadata.gps.lat, lon: metadata.gps.lon };
     }
     return null;
-  }, [manualCoords, metadata?.gps?.lat, metadata?.gps?.lon]);
+  }, [metadata?.gps?.lat, metadata?.gps?.lon]);
 
   const timestamp = useMemo(() => metadata?.shotDate ?? new Date().toISOString(), [metadata?.shotDate]);
 
@@ -113,52 +95,6 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata, manualCoords, 
         gpsHeading={gpsHeading}
       />
 
-      {!metadata?.gps && !manualCoords ? (
-        <div className="manual-coords">
-          <p>{t('mapMissing')}</p>
-          <div className="controls-row">
-            <label>
-              <span className="sr-only">{t('manualLat')}</span>
-              <input
-                type="number"
-                value={latInput}
-                placeholder={t('manualLat')}
-                aria-label={t('manualLat')}
-                min={-90}
-                max={90}
-                step="any"
-                onChange={(event) => setLatInput(event.target.value)}
-              />
-            </label>
-            <label>
-              <span className="sr-only">{t('manualLon')}</span>
-              <input
-                type="number"
-                value={lonInput}
-                placeholder={t('manualLon')}
-                aria-label={t('manualLon')}
-                min={-180}
-                max={180}
-                step="any"
-                onChange={(event) => setLonInput(event.target.value)}
-              />
-            </label>
-            <button
-              type="button"
-              onClick={() => {
-                if (!latInput.trim() || !lonInput.trim()) return;
-                const lat = Number(latInput);
-                const lon = Number(lonInput);
-                if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
-                if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return;
-                onManualCoordsChange({ lat, lon });
-              }}
-            >
-              {t('applyManual')}
-            </button>
-          </div>
-        </div>
-      ) : null}
     </section>
   );
 };

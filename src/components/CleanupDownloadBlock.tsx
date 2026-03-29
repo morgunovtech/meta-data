@@ -391,49 +391,85 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
       </div>
 
       <div className="cleanup-options cleanup-options--grid">
-        <div className="cleanup-card cleanup-card--select">
-          <label className="cleanup-select">
-            <span>{t('qualityLabel')}</span>
+        {/* ── Card 1: Quality + Resolution + Format ── */}
+        <div className="cleanup-card cleanup-card--compound">
+          <strong>{t('qualityLabel')}</strong>
+          <div className="cleanup-slider">
             <select value={qualityMode} onChange={(event) => setQualityMode(event.target.value as QualityMode)}>
               <option value="low">{t('qualityMode_low')}</option>
               <option value="medium">{t('qualityMode_medium')}</option>
               <option value="original">{t('qualityMode_original')}</option>
             </select>
-          </label>
-          <p className="cleanup-select__helper">{t('qualityHelper')}</p>
+          </div>
+          <div className="cleanup-slider">
+            <label>{lang === 'ru' ? 'Разрешение' : 'Resolution'}</label>
+            <select value={downscaleMax} onChange={(event) => setDownscaleMax(Number(event.target.value))}>
+              <option value={0}>{lang === 'ru' ? 'Оригинал' : 'Original'}</option>
+              <option value={1280}>{lang === 'ru' ? 'Мессенджер (1280px)' : 'Messenger (1280px)'}</option>
+              <option value={1920}>{lang === 'ru' ? 'Соцсети (1920px)' : 'Social (1920px)'}</option>
+              <option value={2560}>{lang === 'ru' ? 'Умеренное (2560px)' : 'Moderate (2560px)'}</option>
+            </select>
+          </div>
+          <div className="cleanup-slider">
+            <label>{lang === 'ru' ? 'Формат' : 'Format'}</label>
+            <select value={outputFormat} onChange={(event) => setOutputFormat(event.target.value as OutputFormat)}>
+              <option value="original">{lang === 'ru' ? 'Как в оригинале' : 'Original'}</option>
+              <option value="jpeg">JPEG</option>
+              <option value="png">PNG</option>
+              <option value="webp">WebP</option>
+            </select>
+          </div>
           <span className="cleanup-select__meta">
             {t('qualityPercentLabel', { percent: QUALITY_PERCENT[qualityMode], size: estimatedLabel })}
           </span>
         </div>
-        <label className="cleanup-checkbox">
-          <input
-            type="checkbox"
-            checked={removeMetadata}
-            onChange={(event) => setRemoveMetadata(event.target.checked)}
-          />
-          <span>
-            <strong>{t('removeMetadata')}</strong>
-            <small>{t('removeMetadataHint')}</small>
-          </span>
-        </label>
-        <label className="cleanup-checkbox">
-          <input type="checkbox" checked={renameFile} onChange={(event) => setRenameFile(event.target.checked)} />
-          <span>
-            <strong>{t('renameCheckbox')}</strong>
-            <small>{t('renameHint')}</small>
-          </span>
-        </label>
-        <label className="cleanup-checkbox">
-          <input type="checkbox" checked={blurFaces} onChange={(event) => setBlurFaces(event.target.checked)} />
-          <span>
-            <strong>{t('blurFaces')}</strong>
-            <small>{t('blurFacesHint')}</small>
-          </span>
-          {blurFaces ? (
+
+        {/* ── Card 2: Metadata ── */}
+        <div className="cleanup-card cleanup-card--compound">
+          <strong>{lang === 'ru' ? 'Метаданные' : 'Metadata'}</strong>
+          <label className="cleanup-checkbox cleanup-checkbox--nested">
+            <input type="checkbox" checked={removeMetadata} onChange={(event) => setRemoveMetadata(event.target.checked)} />
+            <span>{t('removeMetadata')}</span>
+          </label>
+          <label className="cleanup-checkbox cleanup-checkbox--nested">
+            <input type="checkbox" checked={renameFile} onChange={(event) => setRenameFile(event.target.checked)} />
+            <span>{t('renameCheckbox')}</span>
+          </label>
+          <label className="cleanup-checkbox cleanup-checkbox--nested">
+            <input type="checkbox" checked={watermarkEnabled} onChange={(event) => setWatermarkEnabled(event.target.checked)} />
+            <span>{t('watermarkToggle')}</span>
+          </label>
+          {watermarkEnabled ? (
+            <input
+              type="text"
+              className="cleanup-text-input"
+              placeholder={t('watermarkText')}
+              value={watermarkText}
+              onChange={(event) => setWatermarkText(event.target.value)}
+            />
+          ) : null}
+        </div>
+
+        {/* ── Card 3: Hide (faces + text + manual mask) ── */}
+        <div className="cleanup-card cleanup-card--compound">
+          <strong>{lang === 'ru' ? 'Скрыть' : lang === 'uz' ? 'Yashirish' : 'Hide'}</strong>
+          <label className="cleanup-checkbox cleanup-checkbox--nested">
+            <input type="checkbox" checked={blurFaces} onChange={(event) => setBlurFaces(event.target.checked)} />
+            <span>{t('blurFaces')}</span>
+          </label>
+          <label className="cleanup-checkbox cleanup-checkbox--nested">
+            <input type="checkbox" checked={blurText} onChange={(event) => setBlurText(event.target.checked)} />
+            <span>{lang === 'ru' ? `Текст (${ocrRegionCount})` : `Text (${ocrRegionCount})`}</span>
+          </label>
+          <label className="cleanup-checkbox cleanup-checkbox--nested">
+            <input type="checkbox" checked={manualMaskMode} onChange={(event) => setManualMaskMode(event.target.checked)} />
+            <span>{t('manualMaskToggle')}</span>
+          </label>
+          {(blurFaces || blurText || manualMaskMode) ? (
             <div className="cleanup-slider">
-              <label htmlFor="blur-strength-faces">{t('blurStrengthLabel')}</label>
+              <label htmlFor="blur-strength">{t('blurStrengthLabel')}</label>
               <input
-                id="blur-strength-faces"
+                id="blur-strength"
                 type="range"
                 min="8"
                 max="64"
@@ -444,43 +480,15 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
               <span className="cleanup-slider__meta">{t('blurStrengthValue', { value: Math.round(blurStrength) })}</span>
             </div>
           ) : null}
-        </label>
-        <label className={`cleanup-checkbox ${manualMaskMode ? 'is-active' : ''}`}>
-          <input
-            type="checkbox"
-            checked={manualMaskMode}
-            onChange={(event) => setManualMaskMode(event.target.checked)}
-          />
-          <span>
-            <strong>{t('manualMaskToggle')}</strong>
-            <small>{t('manualMaskHint')}</small>
-          </span>
-          {manualMaskMode ? (
-            <div className="cleanup-slider">
-              <label htmlFor="blur-strength-manual">{t('blurStrengthLabel')}</label>
-              <input
-                id="blur-strength-manual"
-                type="range"
-                min="8"
-                max="64"
-                step="1"
-                value={blurStrength}
-                onChange={(event) => setBlurStrength(Number(event.target.value))}
-              />
-              <span className="cleanup-slider__meta">{t('blurStrengthValue', { value: Math.round(blurStrength) })}</span>
-            </div>
-          ) : null}
-        </label>
-        <label className={`cleanup-checkbox ${antiSearchEnabled ? 'is-active' : ''}`}>
-          <input
-            type="checkbox"
-            checked={antiSearchEnabled}
-            onChange={(event) => handleAntiSearchToggle(event.target.checked)}
-          />
-          <span>
-            <strong>{t('antiSearchLabel')}</strong>
-            <small>{t('antiSearchHint')}</small>
-          </span>
+        </div>
+
+        {/* ── Card 4: Anti-search protection ── */}
+        <div className="cleanup-card cleanup-card--compound">
+          <strong>{lang === 'ru' ? 'Защита от поиска' : 'Search protection'}</strong>
+          <label className="cleanup-checkbox cleanup-checkbox--nested">
+            <input type="checkbox" checked={antiSearchEnabled} onChange={(event) => handleAntiSearchToggle(event.target.checked)} />
+            <span>{t('antiSearchLabel')}</span>
+          </label>
           {antiSearchEnabled ? (
             <div className="cleanup-slider">
               <label htmlFor="anti-search-level">{t('antiSearchLevelLabel')}</label>
@@ -496,94 +504,10 @@ export const CleanupDownloadBlock: React.FC<CleanupDownloadBlockProps> = ({
               <span className="cleanup-slider__meta">{t('antiSearchLevelValue', { value: antiSearchLevel })}</span>
             </div>
           ) : null}
-        </label>
-        <label className={`cleanup-checkbox ${watermarkEnabled ? 'is-active' : ''}`}>
-          <input
-            type="checkbox"
-            checked={watermarkEnabled}
-            onChange={(event) => setWatermarkEnabled(event.target.checked)}
-          />
-          <span>
-            <strong>{t('watermarkToggle')}</strong>
-            <small>{t('watermarkHint')}</small>
-          </span>
-          {watermarkEnabled ? (
-            <input
-              type="text"
-              className="cleanup-text-input"
-              placeholder={t('watermarkText')}
-              value={watermarkText}
-              onChange={(event) => setWatermarkText(event.target.value)}
-            />
-          ) : null}
-        </label>
-        <label className={`cleanup-checkbox ${blurText ? 'is-active' : ''}`}>
-          <input
-            type="checkbox"
-            checked={blurText}
-            onChange={(event) => setBlurText(event.target.checked)}
-          />
-          <span>
-            <strong>{lang === 'ru' ? 'Скрыть текст' : lang === 'uz' ? 'Matnni yashirish' : 'Blur text'}</strong>
-            <small>
-              {lang === 'ru'
-                ? `Размоет распознанный текст на фото (${ocrRegionCount} фрагментов)`
-                : `Blur recognized text in photo (${ocrRegionCount} fragments)`}
-            </small>
-          </span>
-        </label>
-        <label className={`cleanup-checkbox ${mirrorEnabled ? 'is-active' : ''}`}>
-          <input
-            type="checkbox"
-            checked={mirrorEnabled}
-            onChange={(event) => setMirrorEnabled(event.target.checked)}
-          />
-          <span>
-            <strong>{lang === 'ru' ? 'Отзеркалить' : lang === 'uz' ? 'Aks ettirish' : 'Mirror'}</strong>
-            <small>
-              {lang === 'ru'
-                ? 'Горизонтальный флип — ломает обратный поиск по картинке'
-                : 'Horizontal flip — breaks reverse image search'}
-            </small>
-          </span>
-        </label>
-        <div className="cleanup-card cleanup-card--select">
-          <label className="cleanup-select">
-            <span>{lang === 'ru' ? 'Уменьшить разрешение' : 'Downscale'}</span>
-            <select
-              value={downscaleMax}
-              onChange={(event) => setDownscaleMax(Number(event.target.value))}
-            >
-              <option value={0}>{lang === 'ru' ? 'Без изменений' : 'No change'}</option>
-              <option value={1280}>{lang === 'ru' ? 'Мессенджер (1280px)' : 'Messenger (1280px)'}</option>
-              <option value={1920}>{lang === 'ru' ? 'Соцсети (1920px)' : 'Social media (1920px)'}</option>
-              <option value={2560}>{lang === 'ru' ? 'Умеренное (2560px)' : 'Moderate (2560px)'}</option>
-            </select>
+          <label className="cleanup-checkbox cleanup-checkbox--nested">
+            <input type="checkbox" checked={mirrorEnabled} onChange={(event) => setMirrorEnabled(event.target.checked)} />
+            <span>{lang === 'ru' ? 'Отзеркалить' : 'Mirror'}</span>
           </label>
-          <p className="cleanup-select__helper">
-            {lang === 'ru'
-              ? 'Меньшее разрешение = меньше деталей для идентификации'
-              : 'Lower resolution = fewer details for identification'}
-          </p>
-        </div>
-        <div className="cleanup-card cleanup-card--select">
-          <label className="cleanup-select">
-            <span>{lang === 'ru' ? 'Формат экспорта' : 'Export format'}</span>
-            <select
-              value={outputFormat}
-              onChange={(event) => setOutputFormat(event.target.value as OutputFormat)}
-            >
-              <option value="original">{lang === 'ru' ? 'Как в оригинале' : 'Same as original'}</option>
-              <option value="jpeg">JPEG</option>
-              <option value="png">PNG</option>
-              <option value="webp">WebP</option>
-            </select>
-          </label>
-          <p className="cleanup-select__helper">
-            {lang === 'ru'
-              ? 'Конвертация меняет хеш и сбрасывает часть метаданных'
-              : 'Conversion changes hash and strips some metadata'}
-          </p>
         </div>
       </div>
 
