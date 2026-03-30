@@ -93,13 +93,12 @@ function createImageFromBlob(blob: Blob): Promise<HTMLImageElement> {
 
 /**
  * Try native browser HEIC decoding via createImageBitmap.
- * Chrome 118+, Safari 17+ can decode HEIC natively.
+ * Works on Safari 17+, macOS Chrome (with system HEIC codec).
  */
-async function tryNativeDecode(file: File): Promise<ImageBitmap | null> {
+async function tryNativeBitmapDecode(file: File): Promise<ImageBitmap | null> {
   if (typeof createImageBitmap !== 'function') return null;
   try {
     const bitmap = await createImageBitmap(file);
-    // Sanity check: if the bitmap is 0x0 or very small, it's a decode failure
     if (bitmap.width < 2 || bitmap.height < 2) {
       bitmap.close();
       return null;
@@ -110,12 +109,41 @@ async function tryNativeDecode(file: File): Promise<ImageBitmap | null> {
   }
 }
 
-export async function decodeHeicToJpegForPreview(sourceFile: File): Promise<HeicDecodeResult> {
-  // Strategy 1: Try native browser HEIC decoding (fastest, most compatible)
-  const nativeBitmap = await tryNativeDecode(sourceFile);
+/**
+ * Try decoding HEIC via <img> tag with object URL.
+ * macOS browsers can often decode HEIC through system codecs
+ * even when createImageBitmap doesn't support it.
+ */
+async function tryImgTagDecode(file: File): Promise<HTMLImageElement | null> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = url;
+    const loaded = await Promise.race([
+      new Promise<boolean>((resolve) => {
+        img.onload = () => resolve(true);
+        img.onerror = () => resolve(false);
+      }),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 5000)),
+    ]);
+    if (!loaded || img.naturalWidth < 2 || img.naturalHeight < 2) {
+      URL.revokeObjectURL(url);
+      return null;
+    }
+    // Don't revoke URL yet — caller needs it for canvas drawing
+    return img;
+  } catch {
+    URL.revokeObjectURL(url);
+    return null;
+  }
+}
 
+export async function decodeHeicToJpegForPreview(sourceFile: File): Promise<HeicDecodeResult> {
   let image: { width: number; height: number; source: CanvasImageSource; cleanup?: () => void };
 
+  // Strategy 1: createImageBitmap (Safari 17+, some macOS Chrome)
+  const nativeBitmap = await tryNativeBitmapDecode(sourceFile);
   if (nativeBitmap) {
     image = {
       width: nativeBitmap.width,
@@ -124,29 +152,39 @@ export async function decodeHeicToJpegForPreview(sourceFile: File): Promise<Heic
       cleanup: () => nativeBitmap.close(),
     };
   } else {
-    // Strategy 2: Fallback to heic2any library
-    const mod = await import('heic2any');
-    const heic2any = (typeof mod === 'function' ? mod : (mod as any).default) as (options: {
-      blob: Blob;
-      toType?: string;
-      quality?: number;
-    }) => Promise<Blob | Blob[]>;
+    // Strategy 2: <img> tag with system codec (macOS)
+    const nativeImg = await tryImgTagDecode(sourceFile);
+    if (nativeImg) {
+      image = {
+        width: nativeImg.naturalWidth,
+        height: nativeImg.naturalHeight,
+        source: nativeImg,
+      };
+    } else {
+      // Strategy 3: heic2any JS library (universal fallback)
+      const mod = await import('heic2any');
+      const heic2any = (typeof mod === 'function' ? mod : (mod as any).default) as (options: {
+        blob: Blob;
+        toType?: string;
+        quality?: number;
+      }) => Promise<Blob | Blob[]>;
 
-    if (typeof heic2any !== 'function') {
-      throw new Error('heic2any module failed to load');
+      if (typeof heic2any !== 'function') {
+        throw new Error('heic2any module failed to load');
+      }
+
+      let jpegBlob: Blob;
+      try {
+        const converted = await heic2any({ blob: sourceFile, toType: 'image/jpeg', quality: 0.92 });
+        jpegBlob = Array.isArray(converted) ? converted[0] : converted;
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : 'heic-convert';
+        throw new Error(`heic-convert:${reason}`);
+      }
+
+      const imgEl = await createImageFromBlob(jpegBlob);
+      image = { width: imgEl.naturalWidth, height: imgEl.naturalHeight, source: imgEl };
     }
-
-    let jpegBlob: Blob;
-    try {
-      const converted = await heic2any({ blob: sourceFile, toType: 'image/jpeg', quality: 0.92 });
-      jpegBlob = Array.isArray(converted) ? converted[0] : converted;
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : 'heic-convert';
-      throw new Error(`heic-convert:${reason}`);
-    }
-
-    const imgEl = await createImageFromBlob(jpegBlob);
-    image = { width: imgEl.naturalWidth, height: imgEl.naturalHeight, source: imgEl };
   }
 
   const maxSide = Math.max(image.width, image.height);
