@@ -411,15 +411,21 @@ const App: React.FC = () => {
         }
         const mime = fileInfo.mimeType.includes('png') ? 'image/png' : 'image/jpeg';
         const quality = mime === 'image/jpeg' ? qualityForMode(qualityMode) : undefined;
-        const dataUrl = canvas.toDataURL(mime, quality);
-        if (!cancelled) {
-          setPreviewDataUrl(dataUrl);
-          setEstimatedSize(estimateDataUrlBytes(dataUrl));
+        // Use blob URL instead of data URL — much less memory for large images
+        canvas.toBlob((blob) => {
+          if (!blob || cancelled) return;
+          // Revoke previous preview URL to free memory
+          setPreviewDataUrl((prev) => {
+            if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev);
+            return URL.createObjectURL(blob);
+          });
+          setEstimatedSize(blob.size);
           setPreviewDimensions({
             width: Math.round(canvas.width / previewScale),
             height: Math.round(canvas.height / previewScale)
           });
-        }
+          setPreviewLoading(false);
+        }, mime, quality);
       })
       .catch((err) => {
         console.error('cleanup-preview', err);
@@ -430,9 +436,8 @@ const App: React.FC = () => {
         }
       })
       .finally(() => {
-        if (!cancelled) {
-          setPreviewLoading(false);
-        }
+        // previewLoading is set to false inside toBlob callback on success,
+        // or here on error path
       });
     }, 300);
 

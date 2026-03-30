@@ -22,28 +22,34 @@ export const ShockBlock: React.FC<ShockBlockProps> = ({ metadata }) => {
     return null;
   }, [metadata?.gps?.lat, metadata?.gps?.lon]);
 
-  const timestamp = useMemo(() => metadata?.shotDate ?? new Date().toISOString(), [metadata?.shotDate]);
+  const timestamp = useMemo(() => metadata?.shotDate ?? null, [metadata?.shotDate]);
 
   const reverseFetch = useAPIFetch<ReverseGeocodeResult>();
   const weatherFetch = useAPIFetch<HistoricalWeatherResult>();
   const poiFetch = useAPIFetch<PoiResult[]>();
   const surveillanceFetch = useAPIFetch<PoiResult[]>();
 
+  // Extract stable request functions to avoid stale closure issues in useEffect
+  const reverseRequest = reverseFetch.request;
+  const weatherRequest = weatherFetch.request;
+  const poiRequest = poiFetch.request;
+  const surveillanceRequest = surveillanceFetch.request;
+
   useEffect(() => {
     if (!coords) return;
-    reverseFetch.request(`/api/reverse-geocode?lat=${coords.lat}&lon=${coords.lon}`);
-  }, [coords]);
+    reverseRequest(`/api/reverse-geocode?lat=${coords.lat}&lon=${coords.lon}`);
+  }, [coords, reverseRequest]);
 
   useEffect(() => {
     if (!coords || !timestamp) return;
-    weatherFetch.request(`/api/historical-weather?lat=${coords.lat}&lon=${coords.lon}&timestamp=${encodeURIComponent(timestamp)}`);
-  }, [coords, timestamp]);
+    weatherRequest(`/api/historical-weather?lat=${coords.lat}&lon=${coords.lon}&timestamp=${encodeURIComponent(timestamp)}`);
+  }, [coords, timestamp, weatherRequest]);
 
   useEffect(() => {
     if (!coords) return;
-    poiFetch.request(`/api/nearby-poi?lat=${coords.lat}&lon=${coords.lon}`);
-    surveillanceFetch.request(`/api/surveillance-candidates?lat=${coords.lat}&lon=${coords.lon}`);
-  }, [coords]);
+    poiRequest(`/api/nearby-poi?lat=${coords.lat}&lon=${coords.lon}`);
+    surveillanceRequest(`/api/surveillance-candidates?lat=${coords.lat}&lon=${coords.lon}`);
+  }, [coords, poiRequest, surveillanceRequest]);
 
   const movement = useMemo(() => inferMovement(metadata), [metadata]);
   const weatherSummary = useMemo(() => summarizeWeather(weatherFetch.data ?? null), [weatherFetch.data]);

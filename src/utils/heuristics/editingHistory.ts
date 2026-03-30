@@ -40,7 +40,7 @@ const AI_MARKERS: Array<{ pattern: RegExp; tool: string }> = [
   { pattern: /comfyui/i, tool: 'ComfyUI' },
   { pattern: /automatic1111|a1111/i, tool: 'Automatic1111' },
   { pattern: /novelai/i, tool: 'NovelAI' },
-  { pattern: /flux/i, tool: 'Flux' },
+  { pattern: /\bflux\b/i, tool: 'Flux' },
   { pattern: /ai_type/i, tool: 'AI (unknown)' },
   { pattern: /dream\s?studio/i, tool: 'DreamStudio' },
   { pattern: /leonardo\.ai/i, tool: 'Leonardo.AI' },
@@ -84,7 +84,8 @@ export function analyzeEditingHistory(
   let isAiGenerated = false;
   let aiTool: string | null = null;
 
-  const searchText = [...softwareSources, JSON.stringify(xmp)].join(' ');
+  const xmpStr = JSON.stringify(xmp).toLowerCase();
+  const searchText = [...softwareSources, xmpStr].join(' ');
   for (const marker of AI_MARKERS) {
     if (marker.pattern.test(searchText)) {
       isAiGenerated = true;
@@ -94,7 +95,6 @@ export function analyzeEditingHistory(
   }
 
   // Check XMP for explicit AI markers
-  const xmpStr = JSON.stringify(xmp).toLowerCase();
   if (!isAiGenerated && (xmpStr.includes('"ai_type"') || xmpStr.includes('"source":"ai"') || xmpStr.includes('generative'))) {
     isAiGenerated = true;
     aiTool = 'AI (unknown)';

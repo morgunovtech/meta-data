@@ -16,11 +16,23 @@ function pluralRu(n: number, one: string, few: string, many: string): string {
   return `${n} ${many}`;
 }
 
+function parseExifDate(value: string): Date | null {
+  // EXIF dates are often "YYYY:MM:DD HH:MM:SS" — normalize to ISO
+  const normalized = value.trim().replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3').replace(/\s+/, 'T');
+  const dt = new Date(normalized);
+  if (isNaN(dt.getTime())) {
+    // Fallback: try the original string
+    const fallback = new Date(value);
+    return isNaN(fallback.getTime()) ? null : fallback;
+  }
+  return dt;
+}
+
 export function analyzeDateTime(dateTimeOriginal: string | undefined, lang: Lang): TemporalInsight[] {
   if (!dateTimeOriginal) return [];
 
-  const dt = new Date(dateTimeOriginal);
-  if (isNaN(dt.getTime())) return [];
+  const dt = parseExifDate(dateTimeOriginal);
+  if (!dt) return [];
 
   const hour = dt.getHours();
   const dayOfWeek = dt.getDay();

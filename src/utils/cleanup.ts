@@ -299,12 +299,14 @@ export function applyAntiSearch(
   return output;
 }
 
-export function applyColorReduction(canvas: HTMLCanvasElement): HTMLCanvasElement {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    throw new Error('canvas');
-  }
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+export function applyColorReduction(source: HTMLCanvasElement): HTMLCanvasElement {
+  const out = document.createElement('canvas');
+  out.width = source.width;
+  out.height = source.height;
+  const ctx = out.getContext('2d');
+  if (!ctx) return source;
+  ctx.drawImage(source, 0, 0);
+  const imageData = ctx.getImageData(0, 0, out.width, out.height);
   const data = imageData.data;
   for (let i = 0; i < data.length; i += 4) {
     const luminance = 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
@@ -314,7 +316,7 @@ export function applyColorReduction(canvas: HTMLCanvasElement): HTMLCanvasElemen
     data[i + 2] = quantised;
   }
   ctx.putImageData(imageData, 0, 0);
-  return canvas;
+  return out;
 }
 
 export function applyPrnuCleanup(canvas: HTMLCanvasElement): HTMLCanvasElement {

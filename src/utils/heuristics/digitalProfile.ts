@@ -228,9 +228,13 @@ export function generateDigitalProfile(input: ProfileInput): DigitalProfile {
       title: lang === 'ru' ? 'Люди на фото' : lang === 'uz' ? 'Fotodagi odamlar' : 'People in photo',
       text: lang === 'ru'
         ? `Обнаружено ${personDetections.length} чел.`
+        : lang === 'uz'
+        ? `${personDetections.length} kishi aniqlandi`
         : `${personDetections.length} person(s) detected`,
       subtext: lang === 'ru'
         ? 'Лица могут быть найдены через сервисы поиска по изображениям'
+        : lang === 'uz'
+        ? 'Yuzlar rasm qidiruv xizmatlari orqali topilishi mumkin'
         : 'Faces can be found via image search services',
       leakPoints: 20,
       severity: 'high',

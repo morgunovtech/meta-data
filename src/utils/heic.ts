@@ -205,10 +205,12 @@ export async function decodeHeicToJpegForPreview(sourceFile: File): Promise<Heic
     // Strategy 2: <img> tag with system codec (macOS)
     const nativeImg = await tryImgTagDecode(sourceFile);
     if (nativeImg) {
+      const imgSrc = nativeImg.src; // object URL to revoke after canvas draw
       image = {
         width: nativeImg.naturalWidth,
         height: nativeImg.naturalHeight,
         source: nativeImg,
+        cleanup: () => { if (imgSrc.startsWith('blob:')) URL.revokeObjectURL(imgSrc); },
       };
     } else {
       // Strategy 3: libheif-js WASM decoder (supports all HEIC variants)

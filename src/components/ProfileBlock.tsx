@@ -228,6 +228,9 @@ export const ProfileBlock: React.FC<ProfileBlockProps> = ({ profile, lang, metad
     navigator.clipboard.writeText(report).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {
+      // Clipboard API denied (iframe, permissions policy) — fallback to text selection
+      console.warn('clipboard-write-denied');
     });
   };
 

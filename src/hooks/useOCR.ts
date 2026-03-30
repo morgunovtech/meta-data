@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useT } from '../i18n';
+import { useI18n, useT } from '../i18n';
 import type { BasicFileInfo } from '../types/metadata';
 
 export interface OCRRegion {
@@ -175,6 +175,7 @@ function extractFromWords(
 
 export function useOCR(fileInfo: BasicFileInfo | null) {
   const t = useT();
+  const { lang } = useI18n();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<OCRResult | null>(null);
@@ -287,7 +288,10 @@ export function useOCR(fileInfo: BasicFileInfo | null) {
       workerRef.current?.terminate().catch(() => {});
       workerRef.current = null;
     };
-  }, [fileInfo, t]);
+  // Depend on lang instead of t to avoid re-running OCR on language switch.
+  // t is only used for progress labels inside the effect, not for OCR logic.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileInfo, lang]);
 
   return { loading, error, result, progress };
 }
