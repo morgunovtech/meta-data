@@ -8,11 +8,61 @@ type RawMetadata = {
   gpsRaw: Record<string, unknown> | undefined;
 };
 
+/**
+ * Extract EXIF TIFF blob from HEIC/HEIF ISO BMFF container.
+ * HEIC stores EXIF data as 'Exif\x00\x00' + TIFF stream inside a metadata item.
+ * exifr cannot parse HEIC containers directly, so we extract the TIFF blob first.
+ */
+async function extractExifFromHeic(file: File): Promise<ArrayBuffer | null> {
+  try {
+    const buffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    // Search for 'Exif\x00\x00' followed by TIFF header ('II' or 'MM')
+    for (let i = 0; i < bytes.length - 8; i++) {
+      if (
+        bytes[i] === 0x45 && bytes[i + 1] === 0x78 && // Ex
+        bytes[i + 2] === 0x69 && bytes[i + 3] === 0x66 && // if
+        bytes[i + 4] === 0x00 && bytes[i + 5] === 0x00    // \0\0
+      ) {
+        // Check next 2 bytes for TIFF byte order mark
+        const b0 = bytes[i + 6];
+        const b1 = bytes[i + 7];
+        if ((b0 === 0x49 && b1 === 0x49) || (b0 === 0x4D && b1 === 0x4D)) {
+          // Found TIFF header — extract a generous chunk (64KB should cover any EXIF)
+          const tiffStart = i + 6;
+          const tiffEnd = Math.min(tiffStart + 65536, bytes.length);
+          return buffer.slice(tiffStart, tiffEnd);
+        }
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+const HEIC_MIME_PREFIXES = ['image/heic', 'image/heif'];
+
+function isHeicFile(file: File): boolean {
+  if (HEIC_MIME_PREFIXES.some(m => file.type.toLowerCase().startsWith(m))) return true;
+  return /\.(heic|heif)$/i.test(file.name);
+}
+
 export async function extractMetadataFromOriginal(file: File): Promise<RawMetadata> {
-  // Parse all segments in one pass — avoids the separate exifr.xmp/iptc/icc
-  // calls which have broken types in exifr v7 and silently fail on some files.
+  // For HEIC files: extract EXIF TIFF blob from the ISO BMFF container,
+  // then parse that blob with exifr (which doesn't support HEIC natively).
+  let parseSource: File | ArrayBuffer = file;
+  if (isHeicFile(file)) {
+    const exifBlob = await extractExifFromHeic(file);
+    if (exifBlob) {
+      parseSource = exifBlob;
+    }
+    // If no EXIF found in HEIC, fall through to try parsing the file directly
+    // (will likely return empty, but no harm)
+  }
+
   const parsed = await safeExtract(() =>
-    exifr.parse(file, {
+    exifr.parse(parseSource, {
       tiff: true,
       exif: true,
       gps: true,
@@ -24,7 +74,7 @@ export async function extractMetadataFromOriginal(file: File): Promise<RawMetada
     })
   ) as Record<string, unknown> | undefined;
 
-  const gpsRaw = await safeExtract(() => (exifr as any).gps(file));
+  const gpsRaw = await safeExtract(() => (exifr as any).gps(parseSource));
 
   const base = parsed ?? {};
 
