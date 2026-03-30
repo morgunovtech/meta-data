@@ -161,29 +161,42 @@ export async function decodeHeicToJpegForPreview(sourceFile: File): Promise<Heic
         source: nativeImg,
       };
     } else {
-      // Strategy 3: heic2any JS library (universal fallback)
-      const mod = await import('heic2any');
-      const heic2any = (typeof mod === 'function' ? mod : (mod as any).default) as (options: {
-        blob: Blob;
-        toType?: string;
-        quality?: number;
-      }) => Promise<Blob | Blob[]>;
+      // Strategy 3: libheif-js WASM decoder (supports all HEIC variants)
+      const libheifModule = await import('libheif-js');
+      const libheif = (libheifModule as any).default ?? libheifModule;
+      const decoder = new libheif.HeifDecoder();
+      const buffer = await sourceFile.arrayBuffer();
+      const data = new Uint8Array(buffer);
+      const images = decoder.decode(data);
 
-      if (typeof heic2any !== 'function') {
-        throw new Error('heic2any module failed to load');
+      if (!images || images.length === 0) {
+        throw new Error('heic-convert: libheif could not decode image');
       }
 
-      let jpegBlob: Blob;
-      try {
-        const converted = await heic2any({ blob: sourceFile, toType: 'image/jpeg', quality: 0.92 });
-        jpegBlob = Array.isArray(converted) ? converted[0] : converted;
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : 'heic-convert';
-        throw new Error(`heic-convert:${reason}`);
-      }
+      const heifImage = images[0];
+      const w = heifImage.get_width();
+      const h = heifImage.get_height();
 
-      const imgEl = await createImageFromBlob(jpegBlob);
-      image = { width: imgEl.naturalWidth, height: imgEl.naturalHeight, source: imgEl };
+      // Render HEIC to canvas via display() callback
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('canvas');
+
+      const imageData = ctx.createImageData(w, h);
+      await new Promise<void>((resolve, reject) => {
+        heifImage.display(imageData, (result: ImageData | null) => {
+          if (!result) {
+            reject(new Error('heic-convert: libheif display failed'));
+            return;
+          }
+          ctx.putImageData(result, 0, 0);
+          resolve();
+        });
+      });
+
+      image = { width: w, height: h, source: canvas };
     }
   }
 
